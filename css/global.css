@@ -1,0 +1,96 @@
+:root {
+  --font-serif: 'Cormorant Garamond', Georgia, serif;
+  --font-sans: 'Raleway', system-ui, sans-serif;
+
+  --color-cream: rgba(240, 235, 218, 1);
+  --color-cream-90: rgba(240, 235, 218, 0.9);
+  --color-cream-60: rgba(240, 235, 218, 0.6);
+  --color-cream-40: rgba(240, 235, 218, 0.4);
+  --color-cream-25: rgba(240, 235, 218, 0.25);
+  --color-cream-15: rgba(240, 235, 218, 0.15);
+
+  --transition-dissolve: opacity 0.9s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-ui: opacity 0.4s ease, transform 0.4s ease;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: var(--color-cream);
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+button {
+  font-family: var(--font-sans);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  color: inherit;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.screen {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.fade-in {
+  animation: fadeIn var(--dur, 0.8s) ease-out var(--delay, 0s) both;
+}
+
+.fade-up {
+  animation: fadeUp var(--dur, 0.8s) ease-out var(--delay, 0s) both;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

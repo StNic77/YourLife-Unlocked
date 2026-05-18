@@ -1,0 +1,371 @@
+{
+  "worlds": [
+    {
+      "id": "operator",
+      "name": "The Operator",
+      "image": "images/THE_OPERATORd.png",
+      "category": "stoic",
+      "pace": "fast",
+      "onboarding": {
+        "arrival": "First things first.",
+        "smesc": {
+          "situation": {
+            "prompt": "Who's on your team?",
+            "tiles": [
+              { "id": "solo",             "label": "Just me" },
+              { "id": "partner",          "label": "Partner" },
+              { "id": "partner_kids",     "label": "Partner + kids" },
+              { "id": "kids",             "label": "Kids" },
+              { "id": "other",            "label": "Other" }
+            ]
+          },
+          "mission": {
+            "prompt": "What's the gap?",
+            "tiles": "ai_driven",
+            "hidden_tile": { "id": "relational", "label": "The people closest to me" }
+          },
+          "execution": {
+            "statement": "You'll get what you need, when you need it. Nothing before. Nothing after."
+          },
+          "service_support": {
+            "prompt": "What are you responsible for keeping operational?",
+            "tiles": [
+              { "id": "vehicle_home",     "label": "Vehicle + home" },
+              { "id": "health",           "label": "Health and medical" },
+              { "id": "finances",         "label": "Finances and renewals" },
+              { "id": "family_logistics", "label": "Family logistics" },
+              { "id": "all",              "label": "All of it" }
+            ]
+          },
+          "command_signals": {
+            "statement": "You're always in command. We'll find our rhythm."
+          },
+          "closeout": "You have the intelligence. You have the mission. Move out."
+        }
+      },
+      "notification_tone": "Timely, accurate, actionable. No noise.",
+      "shadow": "Accountability without vulnerability. The mission gets the best of him."
+    },
+    {
+      "id": "range",
+      "name": "The Range",
+      "image": "images/THE_RANGE.png",
+      "category": "stoic",
+      "pace": "unhurried",
+      "onboarding": {
+        "arrival": "Good land doesn't rush.",
+        "smesc": {
+          "situation": {
+            "prompt": "What are you responsible for?",
+            "tiles": [
+              { "id": "solo",             "label": "Just myself" },
+              { "id": "family",           "label": "My family" },
+              { "id": "something_bigger", "label": "Something bigger than me" },
+              { "id": "all",              "label": "All of it" }
+            ]
+          },
+          "mission": {
+            "prompt": "What's been left untended?",
+            "tiles": "ai_driven",
+            "hidden_tile": { "id": "relational", "label": "The people I carry quietly" }
+          },
+          "execution": {
+            "statement": "Good stewardship means knowing when to act and when to wait. We'll know the difference."
+          },
+          "service_support": {
+            "prompt": "What keeps the operation running day to day?",
+            "tiles": [
+              { "id": "property",         "label": "Property and vehicles" },
+              { "id": "health",           "label": "Health" },
+              { "id": "finances",         "label": "Finances" },
+              { "id": "family",           "label": "Family" },
+              { "id": "land_business",    "label": "Land or business" },
+              { "id": "all",              "label": "All of it" }
+            ]
+          },
+          "command_signals": {
+            "statement": "Your land, your call. I'll be here when you need me."
+          },
+          "closeout": "The work doesn't stop. Neither do we."
+        }
+      },
+      "notification_tone": "Arrives like weather changing. Unhurried.",
+      "shadow": "Solitude calcifies into isolation. Self-reliance becomes inability to receive."
+    },
+    {
+      "id": "garden",
+      "name": "The Garden",
+      "image": "images/THE_GARDEN.png",
+      "category": "nurturing",
+      "pace": "patient",
+      "onboarding": {
+        "arrival": "Everything in its season.",
+        "smesc": {
+          "situation": {
+            "prompt": "Who shares your garden with you?",
+            "tiles": [
+              { "id": "solo",             "label": "Just me" },
+              { "id": "partner",          "label": "A partner" },
+              { "id": "children",         "label": "Children" },
+              { "id": "all",              "label": "All of them" },
+              { "id": "changes",          "label": "It changes" }
+            ]
+          },
+          "mission": {
+            "prompt": "What's not getting the attention it needs?",
+            "tiles": "ai_driven",
+            "hidden_tile": { "id": "relational", "label": "Honestly… me" }
+          },
+          "execution": {
+            "statement": "I'll notice what you miss. You won't have to ask."
+          },
+          "service_support": {
+            "prompt": "What are you keeping alive right now?",
+            "tiles": [
+              { "id": "home_routines",    "label": "Home and routines" },
+              { "id": "health",           "label": "Health" },
+              { "id": "finances",         "label": "Finances" },
+              { "id": "people",           "label": "People I love" },
+              { "id": "all",              "label": "All of it" }
+            ]
+          },
+          "command_signals": {
+            "statement": "Your garden. Your pace. I'll follow your seasons."
+          },
+          "closeout": "Everything you've planted is already being tended."
+        }
+      },
+      "notification_tone": "Patient, one thing at a time, nothing forced.",
+      "shadow": "Tending others while neglecting self. Giving as control. Never being tended."
+    },
+    {
+      "id": "journey",
+      "name": "The Journey",
+      "image": "images/THE_JOURNEYb.png",
+      "category": "nurturing",
+      "pace": "forward",
+      "onboarding": {
+        "arrival": "Every path begins somewhere.",
+        "smesc": {
+          "situation": {
+            "prompt": "Who walks with you?",
+            "tiles": [
+              { "id": "solo",             "label": "Just me, for now" },
+              { "id": "partner",          "label": "A partner" },
+              { "id": "family",           "label": "Family" },
+              { "id": "companions",       "label": "A few good people" },
+              { "id": "changes",          "label": "It changes with the terrain" }
+            ]
+          },
+          "mission": {
+            "prompt": "What's the terrain asking of you right now?",
+            "tiles": "ai_driven",
+            "hidden_tile": { "id": "relational", "label": "The weight I carry for others" }
+          },
+          "execution": {
+            "statement": "I'll read the trail ahead. You focus on the next step."
+          },
+          "service_support": {
+            "prompt": "What do you need to keep moving?",
+            "tiles": [
+              { "id": "health",           "label": "Physical health" },
+              { "id": "finances",         "label": "Resources" },
+              { "id": "relationships",    "label": "The people with me" },
+              { "id": "logistics",        "label": "Logistics and planning" },
+              { "id": "all",              "label": "All of it" }
+            ]
+          },
+          "command_signals": {
+            "statement": "You set the pace. I'll keep you oriented."
+          },
+          "closeout": "The path is clear. Keep moving."
+        }
+      },
+      "notification_tone": "Purposeful, aware of what's ahead on the trail.",
+      "shadow": "Permanent journeying as avoidance of arriving. The path as escape."
+    },
+    {
+      "id": "playbook",
+      "name": "The Playbook",
+      "image": "images/THE_PLAYBOOKb.png",
+      "category": "achievement",
+      "pace": "sharp",
+      "onboarding": {
+        "arrival": "Game day starts the night before.",
+        "smesc": {
+          "situation": {
+            "prompt": "Who's on your roster?",
+            "tiles": [
+              { "id": "solo",             "label": "Flying solo" },
+              { "id": "partner",          "label": "Partner" },
+              { "id": "family",           "label": "Family" },
+              { "id": "team",             "label": "A full team" },
+              { "id": "all",              "label": "All of the above" }
+            ]
+          },
+          "mission": {
+            "prompt": "Where are you leaving points on the field?",
+            "tiles": "ai_driven",
+            "hidden_tile": { "id": "relational", "label": "The people I keep letting down" }
+          },
+          "execution": {
+            "statement": "I'll have the film ready. You make the calls."
+          },
+          "service_support": {
+            "prompt": "What needs to be game-ready?",
+            "tiles": [
+              { "id": "health",           "label": "Physical condition" },
+              { "id": "finances",         "label": "Financial position" },
+              { "id": "home",             "label": "Home operations" },
+              { "id": "relationships",    "label": "Key relationships" },
+              { "id": "all",              "label": "Full roster" }
+            ]
+          },
+          "command_signals": {
+            "statement": "You're the head coach. I'm your best scout."
+          },
+          "closeout": "Playbook's ready. Go execute."
+        }
+      },
+      "notification_tone": "Sharp, preparation-focused, no wasted words.",
+      "shadow": "Scorekeeping in places that should never have scoreboards. Relationships as games."
+    },
+    {
+      "id": "summit",
+      "name": "The Summit",
+      "image": "images/THE_SUMMIT.png",
+      "category": "achievement",
+      "pace": "focused",
+      "onboarding": {
+        "arrival": "The summit is earned at base camp.",
+        "smesc": {
+          "situation": {
+            "prompt": "Who's in your rope team?",
+            "tiles": [
+              { "id": "solo",             "label": "Solo ascent" },
+              { "id": "partner",          "label": "A partner" },
+              { "id": "family",           "label": "Family" },
+              { "id": "team",             "label": "A team" },
+              { "id": "all",              "label": "All of them" }
+            ]
+          },
+          "mission": {
+            "prompt": "What peak are you working toward?",
+            "tiles": "ai_driven",
+            "hidden_tile": { "id": "relational", "label": "The people I left at base camp" }
+          },
+          "execution": {
+            "statement": "I'll watch conditions while you climb. You'll know when to push and when to hold."
+          },
+          "service_support": {
+            "prompt": "What's in your pack right now?",
+            "tiles": [
+              { "id": "health",           "label": "Physical readiness" },
+              { "id": "finances",         "label": "Resources" },
+              { "id": "gear",             "label": "Home and logistics" },
+              { "id": "relationships",    "label": "The people counting on me" },
+              { "id": "all",              "label": "Full kit" }
+            ]
+          },
+          "command_signals": {
+            "statement": "You choose the line. I'll track the weather."
+          },
+          "closeout": "Base camp is set. The mountain's waiting."
+        }
+      },
+      "notification_tone": "Focused, the climb matters as much as the peak.",
+      "shadow": "Tunnel vision. Missing the climb while fixated on the peak. Cost to others."
+    },
+    {
+      "id": "practice",
+      "name": "The Practice",
+      "image": "images/THE_PRACTICE.png",
+      "category": "spiritual",
+      "pace": "still",
+      "onboarding": {
+        "arrival": "The mat is ready.",
+        "smesc": {
+          "situation": {
+            "prompt": "Who shares your practice?",
+            "tiles": [
+              { "id": "solo",             "label": "This is mine alone" },
+              { "id": "partner",          "label": "A partner" },
+              { "id": "family",           "label": "Family" },
+              { "id": "community",        "label": "A wider community" },
+              { "id": "all",              "label": "All of them" }
+            ]
+          },
+          "mission": {
+            "prompt": "What are you working to master?",
+            "tiles": "ai_driven",
+            "hidden_tile": { "id": "relational", "label": "Showing up for others, not just myself" }
+          },
+          "execution": {
+            "statement": "The practice never announces itself. Neither will I."
+          },
+          "service_support": {
+            "prompt": "What requires daily attention?",
+            "tiles": [
+              { "id": "body",             "label": "The body" },
+              { "id": "mind",             "label": "The mind" },
+              { "id": "relationships",    "label": "Relationships" },
+              { "id": "practical",        "label": "Practical life" },
+              { "id": "all",              "label": "All of it" }
+            ]
+          },
+          "command_signals": {
+            "statement": "Your practice. Your discipline. I hold the space."
+          },
+          "closeout": "The work continues. It always does."
+        }
+      },
+      "notification_tone": "Still, devotional, unhurried, precise.",
+      "shadow": "Devotion to practice as a beautiful wall. Inner world as refuge from people."
+    },
+    {
+      "id": "meadow",
+      "name": "The Meadow",
+      "image": "images/THE_MEADOW.png",
+      "category": "spiritual",
+      "pace": "slowest",
+      "onboarding": {
+        "arrival": "You found your way here.",
+        "smesc": {
+          "situation": {
+            "prompt": "Is there someone in your meadow with you?",
+            "tiles": [
+              { "id": "often",            "label": "Often" },
+              { "id": "sometimes",        "label": "Sometimes" },
+              { "id": "rarely",           "label": "Rarely" },
+              { "id": "not_now",          "label": "Not right now" }
+            ]
+          },
+          "mission": {
+            "prompt": "What keeps pulling you out of the stillness?",
+            "tiles": "ai_driven",
+            "hidden_tile": { "id": "relational", "label": "Something I've been avoiding" }
+          },
+          "execution": {
+            "statement": "Nothing will arrive before it's needed. You have my word."
+          },
+          "service_support": {
+            "prompt": "What are you quietly keeping track of?",
+            "tiles": [
+              { "id": "practical",        "label": "Practical things" },
+              { "id": "health",           "label": "My health" },
+              { "id": "people",           "label": "The people I love" },
+              { "id": "everything",       "label": "Everything" },
+              { "id": "not_much",         "label": "Not much" }
+            ]
+          },
+          "command_signals": {
+            "statement": "You arrive when you're ready. I'll be here."
+          },
+          "closeout": "The meadow is yours. Nothing changes that."
+        }
+      },
+      "notification_tone": "The lightest possible intervention. A single blade of grass bending.",
+      "shadow": "Peace as avoidance dressed as wisdom. Retreat mistaken for enlightenment."
+    }
+  ]
+}
