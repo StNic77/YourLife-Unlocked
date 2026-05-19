@@ -13,11 +13,6 @@ async function loadWorlds() {
 }
 
 async function boot() {
-  // Dev reset: visit with ?reset in the URL to clear stored state
-  if (new URLSearchParams(location.search).has('reset')) {
-    store.reset();
-  }
-
   let worlds;
   try {
     worlds = await loadWorlds();
@@ -63,7 +58,6 @@ async function showOnboarding(world, worlds) {
 
   const result = await onboarding.mount(app, {
     onBack: async () => {
-      // User stepped back from onboarding — return to gallery
       await onboarding.unmount();
       store.set('world', null);
       await showGallery(worlds);
@@ -76,29 +70,97 @@ async function showOnboarding(world, worlds) {
 
 async function showHome(worlds) {
   const worldId = store.get('world');
-  const world = worlds.find(w => w.id === worldId);
+  const world   = worlds.find(w => w.id === worldId);
 
-  // Placeholder home screen — Session 8+
-  app.innerHTML = `
-    <div style="
-      position:absolute;inset:0;
-      background:#000;
-      display:flex;flex-direction:column;
-      align-items:center;justify-content:center;
-      gap:16px;padding:40px;
-    ">
-      <div style="
-        font-family:var(--font-serif);font-style:italic;font-weight:300;
-        font-size:clamp(28px,7vw,38px);
-        color:rgba(240,235,218,0.9);text-align:center;
-      ">welcome back</div>
-      ${world ? `<div style="
-        font-family:var(--font-sans);font-weight:200;
-        font-size:11px;letter-spacing:0.25em;text-transform:uppercase;
-        color:rgba(240,235,218,0.35);text-align:center;
-      ">${world.name}</div>` : ''}
-    </div>
+  // Build the home screen as a real element so the dev reset can attach to it
+  const el = document.createElement('div');
+  el.id = 'screen-home';
+  el.style.cssText = `
+    position:absolute;inset:0;
+    background:#000;
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    gap:16px;padding:40px;
   `;
+
+  el.innerHTML = `
+    <div style="
+      font-family:var(--font-serif);font-style:italic;font-weight:300;
+      font-size:clamp(28px,7vw,38px);
+      color:rgba(240,235,218,0.9);text-align:center;
+    ">welcome back</div>
+    ${world ? `<div style="
+      font-family:var(--font-sans);font-weight:200;
+      font-size:11px;letter-spacing:0.25em;text-transform:uppercase;
+      color:rgba(240,235,218,0.35);text-align:center;
+    ">${world.name}</div>` : ''}
+  `;
+
+  app.innerHTML = '';
+  app.appendChild(el);
+
+  // ── Dev Reset — Hidden Long Press ─────────────────────────────────────────
+  // 3-second long-press anywhere on the home/welcome-back screen.
+  // No label, no visible UI. Invisible to real users.
+  attachDevReset(el);
+  // ─────────────────────────────────────────────────────────────────────────
+}
+
+// ─── Dev Reset Implementation ─────────────────────────────────────────────────
+
+const RESET_HOLD_MS = 3000;
+
+function attachDevReset(el) {
+  let timer      = null;
+  let holdActive = false;
+
+  function onStart() {
+    if (timer) return;
+    holdActive = true;
+
+    // Screen dims slowly over the hold duration — subtle, unannounced
+    el.style.transition = `opacity ${RESET_HOLD_MS}ms linear`;
+    el.style.opacity    = '0.5';
+
+    timer = setTimeout(() => {
+      timer      = null;
+      holdActive = false;
+      fireReset(el);
+    }, RESET_HOLD_MS);
+  }
+
+  function onEnd() {
+    if (!holdActive) return;
+    holdActive = false;
+
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+
+    // Released before threshold — restore
+    el.style.transition = 'opacity 0.4s ease';
+    el.style.opacity    = '1';
+  }
+
+  el.addEventListener('pointerdown',   onStart);
+  el.addEventListener('pointerup',     onEnd);
+  el.addEventListener('pointercancel', onEnd);
+  el.addEventListener('pointerleave',  onEnd);
+}
+
+function fireReset(el) {
+  // Two-flash on threshold hit: bright → dim → nuke
+  el.style.transition = 'opacity 0.12s ease';
+  el.style.opacity    = '1';
+
+  setTimeout(() => {
+    el.style.opacity = '0.2';
+    setTimeout(() => {
+      store.reset();
+      location.reload();
+    }, 200);
+  }, 120);
 }
 
 boot();
