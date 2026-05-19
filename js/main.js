@@ -1,6 +1,7 @@
 import { store } from './store.js';
 import { createWelcome } from './welcome.js';
 import { createGallery } from './gallery.js';
+import { createOnboarding } from './onboarding.js';
 
 const app = document.getElementById('app');
 
@@ -12,6 +13,11 @@ async function loadWorlds() {
 }
 
 async function boot() {
+  // Dev reset: visit with ?reset in the URL to clear stored state
+  if (new URLSearchParams(location.search).has('reset')) {
+    store.reset();
+  }
+
   let worlds;
   try {
     worlds = await loadWorlds();
@@ -53,37 +59,26 @@ async function showGallery(worlds) {
 }
 
 async function showOnboarding(world, worlds) {
-  // Onboarding module — Session 6
-  // For now: log the choice and show a holding screen
-  console.log('World chosen:', world.id);
+  const onboarding = createOnboarding(world, worlds);
 
-  app.innerHTML = `
-    <div style="
-      position:absolute;inset:0;
-      background:#000;
-      display:flex;flex-direction:column;
-      align-items:center;justify-content:center;
-      gap:16px;
-      padding:40px;
-    ">
-      <div style="
-        font-family:var(--font-serif);font-style:italic;font-weight:300;
-        font-size:clamp(28px,7vw,38px);
-        color:rgba(240,235,218,0.9);text-align:center;
-      ">${world.name}</div>
-      <div style="
-        font-family:var(--font-sans);font-weight:200;
-        font-size:11px;letter-spacing:0.25em;text-transform:uppercase;
-        color:rgba(240,235,218,0.35);text-align:center;
-      ">${world.onboarding.arrival}</div>
-    </div>
-  `;
+  const result = await onboarding.mount(app, {
+    onBack: async () => {
+      // User stepped back from onboarding — return to gallery
+      await onboarding.unmount();
+      store.set('world', null);
+      await showGallery(worlds);
+    },
+  });
+
+  await onboarding.unmount();
+  await showHome(worlds);
 }
 
 async function showHome(worlds) {
   const worldId = store.get('world');
   const world = worlds.find(w => w.id === worldId);
 
+  // Placeholder home screen — Session 8+
   app.innerHTML = `
     <div style="
       position:absolute;inset:0;

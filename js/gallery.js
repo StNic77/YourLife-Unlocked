@@ -7,6 +7,21 @@ const SWIPE_THRESHOLD = 40;
 const GYRO_THRESHOLD = 12;
 const GYRO_THROTTLE_MS = 1200;
 
+// Per-image object-position fine-tuning for desktop crops.
+// Adjust these values if a specific world image needs reframing on wide screens.
+const DESKTOP_OBJECT_POSITION = {
+  operator: 'center center',
+  range:    'center 30%',
+  garden:   'center center',
+  journey:  'center 40%',
+  playbook: 'center center',
+  summit:   'center 20%',
+  practice: 'center center',
+  meadow:   'center 35%',
+};
+
+const IS_DESKTOP = window.matchMedia('(min-width: 768px)').matches;
+
 export function createGallery(worlds) {
   const el = document.createElement('div');
   el.className = 'screen';
@@ -27,7 +42,7 @@ export function createGallery(worlds) {
 
   function buildHTML() {
     el.innerHTML = `
-      <h2 class="sr-only">Choose your world — eight environments representing different ways of moving through life</h2>
+      <h2 class="sr-only">Choose your path — eight environments representing different ways of moving through life</h2>
 
       <div id="g-scenes" style="position:absolute;inset:0;"></div>
 
@@ -61,13 +76,13 @@ export function createGallery(worlds) {
             font-family:var(--font-serif);font-style:italic;font-weight:300;
             font-size:clamp(20px,5vw,28px);
             color:var(--color-cream-90);letter-spacing:0.01em;line-height:1.25;
-          ">Where do you feel<br>most like yourself?</div>
+          ">Find somewhere that<br>feels like you.</div>
           <div style="
             margin-top:6px;
             font-family:var(--font-sans);font-weight:200;
             font-size:10px;letter-spacing:0.3em;text-transform:uppercase;
             color:var(--color-cream-25);
-          ">your life · unlocked</div>
+          ">your life / unlocked</div>
         </div>
 
         <div style="
@@ -83,7 +98,7 @@ export function createGallery(worlds) {
               font-size:clamp(10px,2.5vw,11px);letter-spacing:0.28em;text-transform:uppercase;
               color:var(--color-cream-40);
               transition:opacity 0.3s ease;
-            ">your world</div>
+            ">your path</div>
             <div id="g-title" style="
               font-family:var(--font-serif);font-weight:300;
               font-size:clamp(28px,7vw,42px);
@@ -102,7 +117,7 @@ export function createGallery(worlds) {
             font-size:clamp(10px,2.5vw,11px);letter-spacing:0.28em;text-transform:uppercase;
             color:var(--color-cream-90);
             transition:background 0.3s ease,border-color 0.3s ease;
-          ">enter this world</button>
+          ">start here</button>
         </div>
       </div>
     `;
@@ -111,6 +126,10 @@ export function createGallery(worlds) {
   function buildScenes() {
     const container = el.querySelector('#g-scenes');
     worlds.forEach((world, i) => {
+      const objectPosition = IS_DESKTOP
+        ? (DESKTOP_OBJECT_POSITION[world.id] || 'center center')
+        : 'center center';
+
       const scene = document.createElement('div');
       scene.style.cssText = `
         position:absolute;inset:0;
@@ -123,7 +142,7 @@ export function createGallery(worlds) {
           src="${world.image}"
           alt="${world.name}"
           loading="${i < 2 ? 'eager' : 'lazy'}"
-          style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;"
+          style="width:100%;height:100%;object-fit:cover;object-position:${objectPosition};display:block;"
         >
         <div style="
           position:absolute;inset:0;
@@ -169,7 +188,7 @@ export function createGallery(worlds) {
       labelEl.style.opacity = '0';
       setTimeout(() => {
         titleEl.textContent = worlds[idx].name;
-        labelEl.textContent = 'your world';
+        labelEl.textContent = 'your path';
         titleEl.style.opacity = '1';
         labelEl.style.opacity = '1';
       }, 200);

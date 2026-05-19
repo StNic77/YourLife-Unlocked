@@ -1,6 +1,8 @@
 :root {
   --font-serif: 'Cormorant Garamond', Georgia, serif;
   --font-sans: 'Raleway', system-ui, sans-serif;
+  --font-display: 'Playfair Display', Georgia, serif;
+  --font-tagline: 'Lora', Georgia, serif;
 
   --color-cream: rgba(240, 235, 218, 1);
   --color-cream-90: rgba(240, 235, 218, 0.9);

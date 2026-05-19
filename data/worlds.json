@@ -53,7 +53,7 @@
       "category": "stoic",
       "pace": "unhurried",
       "onboarding": {
-        "arrival": "Good land doesn't rush.",
+        "arrival": "The gate's open.",
         "smesc": {
           "situation": {
             "prompt": "What are you responsible for?",
@@ -99,7 +99,7 @@
       "category": "nurturing",
       "pace": "patient",
       "onboarding": {
-        "arrival": "Everything in its season.",
+        "arrival": "Let's grow something good together.",
         "smesc": {
           "situation": {
             "prompt": "Who shares your garden with you?",
@@ -145,7 +145,7 @@
       "category": "nurturing",
       "pace": "forward",
       "onboarding": {
-        "arrival": "Every path begins somewhere.",
+        "arrival": "You've already started.",
         "smesc": {
           "situation": {
             "prompt": "Who walks with you?",
@@ -191,7 +191,7 @@
       "category": "achievement",
       "pace": "sharp",
       "onboarding": {
-        "arrival": "Game day starts the night before.",
+        "arrival": "You just made a smart call.",
         "smesc": {
           "situation": {
             "prompt": "Who's on your roster?",
@@ -237,7 +237,7 @@
       "category": "achievement",
       "pace": "focused",
       "onboarding": {
-        "arrival": "The summit is earned at base camp.",
+        "arrival": "Let's climb.",
         "smesc": {
           "situation": {
             "prompt": "Who's in your rope team?",
@@ -283,7 +283,7 @@
       "category": "spiritual",
       "pace": "still",
       "onboarding": {
-        "arrival": "The mat is ready.",
+        "arrival": "Let's hit the mat.",
         "smesc": {
           "situation": {
             "prompt": "Who shares your practice?",
@@ -329,7 +329,7 @@
       "category": "spiritual",
       "pace": "slowest",
       "onboarding": {
-        "arrival": "You found your way here.",
+        "arrival": "Your peace, tended.",
         "smesc": {
           "situation": {
             "prompt": "Is there someone in your meadow with you?",

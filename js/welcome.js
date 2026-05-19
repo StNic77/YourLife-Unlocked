@@ -25,30 +25,30 @@ export function createWelcome() {
         );
       "></div>
     </div>
+
     <div style="
       position:absolute;inset:0;
       display:flex;flex-direction:column;
-      justify-content:flex-end;
-      padding:0 32px calc(max(52px, var(--safe-bottom)) + 52px);
+      justify-content:flex-end;align-items:flex-start;
+      padding:0 36px calc(max(52px, var(--safe-bottom)) + 48px);
     ">
       <div style="
-        font-family:var(--font-sans);font-weight:200;
-        font-size:11px;letter-spacing:0.35em;text-transform:uppercase;
-        color:var(--color-cream-40);margin-bottom:10px;
-        opacity:0;animation:fadeIn 1.5s ease-out 0.6s both;
-      ">your life</div>
-      <div style="
-        font-family:var(--font-serif);font-style:italic;font-weight:300;
-        font-size:clamp(38px,10vw,52px);line-height:1;
-        color:var(--color-cream-90);letter-spacing:0.02em;
+        font-family:var(--font-display);font-weight:500;
+        font-size:clamp(30px,8vw,42px);line-height:1.05;
+        letter-spacing:0.05em;
+        color:var(--color-cream-90);
         opacity:0;animation:fadeUp 2s ease-out 0.9s both;
-      ">unlocked</div>
+      ">Your Life / Unlocked</div>
+
       <div style="
-        font-family:var(--font-sans);font-weight:200;
-        font-size:11px;letter-spacing:0.22em;text-transform:uppercase;
-        color:var(--color-cream-40);margin-top:16px;margin-bottom:32px;
+        font-family:var(--font-tagline);font-style:italic;font-weight:300;
+        font-size:clamp(14px,3.5vw,18px);
+        letter-spacing:0.06em;
+        color:var(--color-cream-60);
+        margin-top:10px;margin-bottom:36px;
         opacity:0;animation:fadeIn 1.5s ease-out 1.6s both;
-      ">everything in its season</div>
+      ">Life, tended.</div>
+
       <button id="welcome-begin" style="
         align-self:flex-start;
         padding:14px 36px;
