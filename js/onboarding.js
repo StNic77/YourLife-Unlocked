@@ -284,7 +284,7 @@ export function createOnboarding(world, allWorlds) {
         answers,
         completedAt: Date.now(),
       });
-      if (resolveComplete) resolveComplete({ world, answers });
+      if (resolveComplete) resolveComplete({ world, answers, next: 'team' });
     });
   }
 

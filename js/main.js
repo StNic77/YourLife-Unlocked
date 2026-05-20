@@ -2,6 +2,7 @@ import { store } from './store.js';
 import { createWelcome } from './welcome.js';
 import { createGallery } from './gallery.js';
 import { createOnboarding } from './onboarding.js';
+import { createTeam } from './team.js';
 
 const app = document.getElementById('app');
 
@@ -63,8 +64,14 @@ async function showOnboarding(world, worlds) {
       await showGallery(worlds);
     },
   });
-
   await onboarding.unmount();
+
+  if (result?.next === 'team') {
+    const team = createTeam(result.world);
+    await team.mount(app);
+    await team.unmount();
+  }
+
   await showHome(worlds);
 }
 

@@ -9,6 +9,13 @@ const defaults = {
     mission: [],
     service_support: [],
   },
+  // team is written by team.js after onboarding completes
+  team: {
+    complete: false,
+    partner: {},
+    children: [],
+    coordinating: {},
+  },
   user: {
     name: null,
     joined: null,
