@@ -241,11 +241,57 @@ export function createOnboarding(world, allWorlds) {
   }
 
   async function renderExecution() {
-    await setContent(statementCard({
-      text: smesc.execution.statement,
-      ctaLabel: 'understood',
-    }));
-    attachCtaListener(() => advance());
+    const s = smesc.execution;
+    // Show the statement with a prompt for how they'll approach it
+    await setContent(`
+      <div style="display:flex;flex-direction:column;gap:24px;">
+        <div style="
+          font-family:var(--font-serif);font-style:italic;font-weight:300;
+          font-size:clamp(24px,6vw,34px);line-height:1.3;
+          color:var(--color-cream-90);letter-spacing:0.01em;
+        ">${s.statement}</div>
+        <div style="
+          font-family:var(--font-sans);font-weight:200;
+          font-size:11px;letter-spacing:0.2em;text-transform:uppercase;
+          color:var(--color-cream-40);margin-top:4px;
+        ">how you'll approach it</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          ${[
+            { id: 'steady',    label: 'Steady and consistent' },
+            { id: 'aggressive',label: 'Hard and fast' },
+            { id: 'adaptive',  label: 'Read and adjust' },
+            { id: 'patient',   label: 'Long game' },
+          ].map(t => `
+            <button class="ob-tile" data-id="${t.id}" style="
+              padding:14px 18px;
+              border:0.5px solid var(--color-cream-25);border-radius:2px;
+              text-align:left;
+              font-family:var(--font-sans);font-weight:300;
+              font-size:clamp(12px,3vw,13px);letter-spacing:0.08em;
+              color:var(--color-cream-90);
+              transition:background 0.25s ease,border-color 0.25s ease;
+              cursor:pointer;
+            ">${t.label}</button>
+          `).join('')}
+        </div>
+        <button class="ob-cta" data-action="confirm" disabled style="
+          align-self:flex-start;margin-top:4px;
+          padding:13px 32px;
+          border:0.5px solid var(--color-cream-15);border-radius:2px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:11px;letter-spacing:0.28em;text-transform:uppercase;
+          color:var(--color-cream-40);
+          transition:all 0.3s ease;cursor:default;
+        ">confirmed</button>
+      </div>
+    `);
+    attachTileListeners({
+      multi: false,
+      onConfirm: selected => {
+        answers.execution = selected[0];
+        advance();
+      },
+    });
   }
 
   async function renderServiceSupport() {
@@ -265,18 +311,77 @@ export function createOnboarding(world, allWorlds) {
   }
 
   async function renderCommandSignals() {
-    await setContent(statementCard({
-      text: smesc.command_signals.statement,
-      ctaLabel: 'good',
-    }));
-    attachCtaListener(() => advance());
+    const cs = smesc.command_signals;
+    await setContent(`
+      <div style="display:flex;flex-direction:column;gap:24px;">
+        <div style="
+          font-family:var(--font-serif);font-style:italic;font-weight:300;
+          font-size:clamp(24px,6vw,34px);line-height:1.3;
+          color:var(--color-cream-90);letter-spacing:0.01em;
+        ">${cs.statement}</div>
+        <div style="
+          font-family:var(--font-sans);font-weight:200;
+          font-size:11px;letter-spacing:0.2em;text-transform:uppercase;
+          color:var(--color-cream-40);margin-top:4px;
+        ">what to watch for</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          ${[
+            { id: 'slipping',   label: 'Things slipping through' },
+            { id: 'patterns',   label: 'Patterns I\'m missing' },
+            { id: 'timing',     label: 'Bad timing' },
+            { id: 'blindspots', label: 'Blind spots' },
+          ].map(t => `
+            <button class="ob-tile" data-id="${t.id}" style="
+              padding:14px 18px;
+              border:0.5px solid var(--color-cream-25);border-radius:2px;
+              text-align:left;
+              font-family:var(--font-sans);font-weight:300;
+              font-size:clamp(12px,3vw,13px);letter-spacing:0.08em;
+              color:var(--color-cream-90);
+              transition:background 0.25s ease,border-color 0.25s ease;
+              cursor:pointer;
+            ">${t.label}</button>
+          `).join('')}
+        </div>
+        <button class="ob-cta" data-action="confirm" disabled style="
+          align-self:flex-start;margin-top:4px;
+          padding:13px 32px;
+          border:0.5px solid var(--color-cream-15);border-radius:2px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:11px;letter-spacing:0.28em;text-transform:uppercase;
+          color:var(--color-cream-40);
+          transition:all 0.3s ease;cursor:default;
+        ">confirmed</button>
+      </div>
+    `);
+    attachTileListeners({
+      multi: true,
+      onConfirm: selected => {
+        answers.command_signals = selected;
+        advance();
+      },
+    });
   }
 
   async function renderCloseout() {
-    await setContent(statementCard({
-      text: smesc.closeout,
-      ctaLabel: 'lets go',
-    }));
+    await setContent(`
+      <div style="display:flex;flex-direction:column;gap:28px;">
+        <div style="
+          font-family:var(--font-serif);font-style:italic;font-weight:300;
+          font-size:clamp(28px,7vw,42px);line-height:1.2;
+          color:var(--color-cream-90);letter-spacing:0.01em;
+        ">${smesc.closeout}</div>
+        <button class="ob-cta" data-action="next" style="
+          align-self:flex-start;margin-top:12px;
+          padding:13px 32px;
+          border:0.5px solid var(--color-cream-40);border-radius:2px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:11px;letter-spacing:0.28em;text-transform:uppercase;
+          color:var(--color-cream-90);
+          transition:background 0.3s ease,border-color 0.3s ease;
+        ">move out</button>
+      </div>
+    `);
     attachCtaListener(() => {
       store.set('onboarding', {
         complete: true,

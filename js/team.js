@@ -84,13 +84,13 @@ export function createTeam(world) {
       <div style="display:flex;flex-direction:column;gap:20px;">
         <div style="
           font-family:var(--font-serif);font-style:italic;font-weight:300;
-          font-size:clamp(20px,5vw,28px);line-height:1.4;
+          font-size:clamp(26px,6vw,38px);line-height:1.3;
           color:var(--color-cream-90);letter-spacing:0.01em;
         ">${text}</div>
         ${sub ? `<div style="
           font-family:var(--font-sans);font-weight:200;
           font-size:11px;letter-spacing:0.2em;text-transform:uppercase;
-          color:var(--color-cream-40);
+          color:var(--color-cream-60);
         ">${sub}</div>` : ''}
         ${ctaLabel ? `<button class="team-cta" data-action="next" style="
           align-self:flex-start;margin-top:8px;
@@ -665,10 +665,11 @@ export function createTeam(world) {
             tile.style.background = 'rgba(240,235,218,0.12)';
             tile.style.borderColor = 'var(--color-cream-90)';
 
-            // Single-select auto-confirms after brief delay
+            // Update confirm state first, then resolve directly after delay
+            updateConfirm();
             setTimeout(() => {
-              if (!confirmBtn.disabled) confirmBtn.click();
-            }, 200);
+              resolve(tile.dataset.id);
+            }, 220);
           } else {
             if (selected.has(tile.dataset.id)) {
               selected.delete(tile.dataset.id);
@@ -861,6 +862,15 @@ export function createTeam(world) {
             font-size:10px;letter-spacing:0.3em;text-transform:uppercase;
             color:var(--color-cream-25);
           ">${world.name.toLowerCase()} · your team</div>
+
+          <button id="team-back" style="
+            font-family:var(--font-sans);font-weight:200;
+            font-size:10px;letter-spacing:0.22em;text-transform:uppercase;
+            color:var(--color-cream-25);
+            padding:8px;
+            transition:color 0.3s ease;
+            background:none;border:none;cursor:pointer;
+          ">← back</button>
         </div>
 
         <div id="team-dots" style="
@@ -887,6 +897,26 @@ export function createTeam(world) {
     mount(container) {
       buildScaffold();
       container.appendChild(el);
+
+      // Back button — steps back within team, or exits to home if at intro
+      const backBtn = el.querySelector('#team-back');
+      if (backBtn) {
+        backBtn.addEventListener('mouseenter', () => {
+          backBtn.style.color = 'var(--color-cream-60)';
+        });
+        backBtn.addEventListener('mouseleave', () => {
+          backBtn.style.color = 'var(--color-cream-25)';
+        });
+        backBtn.addEventListener('click', () => {
+          if (currentStep > 0) {
+            currentStep--;
+            renderStep();
+          } else {
+            saveAndExit();
+          }
+        });
+      }
+
       updateProgressDots();
       renderStep();
 

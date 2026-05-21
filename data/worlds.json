@@ -38,9 +38,9 @@
             ]
           },
           "command_signals": {
-            "statement": "You're always in command. We'll find our rhythm."
+            "statement": "You call it. I'll flag what you'd want to know."
           },
-          "closeout": "You have the intelligence. You have the mission. Move out."
+          "closeout": "Mission's clear. Let's get to work."
         }
       },
       "notification_tone": "Timely, accurate, actionable. No noise.",
