@@ -1,4 +1,4 @@
-const MODEL = 'claude-sonnet-4-20250514';
+const MODEL = 'claude-sonnet-4-5';
 const MAX_TOKENS = 1000;
 const ENDPOINT = 'https://spring-rain-0f72.sstnicolaas.workers.dev';
 
