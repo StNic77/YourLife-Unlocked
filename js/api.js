@@ -1,6 +1,6 @@
 const MODEL = 'claude-sonnet-4-20250514';
 const MAX_TOKENS = 1000;
-const ENDPOINT = 'https://api.anthropic.com/v1/messages';
+const ENDPOINT = 'https://spring-rain-0f72.sstnicolaas.workers.dev';
 
 export const api = {
   async send({ system, messages, maxTokens = MAX_TOKENS }) {
@@ -28,10 +28,6 @@ export const api = {
       .map(b => b.text)
       .join('');
   },
-
-  // ---------------------------------------------------------------------------
-  // getMissionTiles — unchanged
-  // ---------------------------------------------------------------------------
 
   async getMissionTiles({ worldId, worldData, situationAnswer }) {
     const world = worldData.find(w => w.id === worldId);
@@ -62,47 +58,5 @@ Generate 4 mission tiles.`,
     } catch {
       throw new Error('Failed to parse mission tiles');
     }
-  },
-
-  // ---------------------------------------------------------------------------
-  // getTeamReflection — new
-  // Called by team.js after emotionally weighted answers.
-  // Returns a single sentence — warm, quiet, never a question.
-  // ---------------------------------------------------------------------------
-
-  async getTeamReflection({ type, partnerName, tenure, state, works,
-    profession, birthday, love_language }) {
-
-    const contextParts = [];
-    if (partnerName) contextParts.push(`Partner's name: ${partnerName}`);
-    if (tenure)      contextParts.push(`Together: ${tenure}`);
-    if (state)       contextParts.push(`Relationship state: ${state}`);
-    if (works)       contextParts.push(`Partner works: ${works}`);
-    if (profession)  contextParts.push(`Profession: ${profession}`);
-    if (birthday)    contextParts.push(`Birthday: ${birthday}`);
-    if (love_language) contextParts.push(`Love language: ${love_language}`);
-
-    const typeInstructions = {
-      state: 'The user just described the current state of their relationship.',
-      profession: 'The user just shared what their partner does for work.',
-      birthday: 'The user just shared their partner\'s birthday.',
-      partner_complete: 'The user has finished sharing details about their partner.',
-    };
-
-    const system = `You are a quiet, perceptive presence inside a personal life app called Your Life / Unlocked. 
-The user is sharing details about the people they care about during onboarding.
-Your entire response must be ONE sentence only — warm, brief, never therapeutic, never a question.
-Acknowledge what was just shared as a thoughtful person would. Under 20 words.
-No preamble. No explanation. The sentence only.`;
-
-    const messages = [{
-      role: 'user',
-      content: `Context: ${contextParts.join('. ')}.
-Moment: ${typeInstructions[type] || 'The user shared something about their team.'}
-Respond with one quiet, warm sentence acknowledging this.`,
-    }];
-
-    const raw = await this.send({ system, messages, maxTokens: 60 });
-    return raw.trim();
   },
 };

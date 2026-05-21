@@ -46,7 +46,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (request.url.includes('api.anthropic.com')) {
+  if (request.url.includes('spring-rain-0f72.sstnicolaas.workers.dev')) {
     return;
   }
 
