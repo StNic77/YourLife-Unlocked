@@ -1,6 +1,5 @@
 import { transitions } from './transitions.js';
 import { store } from './store.js';
-import { api } from './api.js';
 
 // ---------------------------------------------------------------------------
 // ONBOARDING MODULE
@@ -9,7 +8,7 @@ import { api } from './api.js';
 // its own copy from worlds.json.
 //
 // Flow:
-//   arrival → situation → mission (AI tiles) → execution →
+//   arrival → situation → mission (static tiles) → execution →
 //   service_support → command_signals → closeout
 // ---------------------------------------------------------------------------
 
@@ -23,7 +22,7 @@ const STEPS = [
   'closeout',
 ];
 
-export function createOnboarding(world, allWorlds) {
+export function createOnboarding(world) {
   const el = document.createElement('div');
   el.className = 'screen';
   el.id = 'screen-onboarding';
@@ -142,24 +141,6 @@ export function createOnboarding(world, allWorlds) {
     `;
   }
 
-  function loadingCard(prompt) {
-    return `
-      <div style="display:flex;flex-direction:column;gap:20px;">
-        <div style="
-          font-family:var(--font-serif);font-style:italic;font-weight:300;
-          font-size:clamp(20px,5vw,28px);line-height:1.3;
-          color:var(--color-cream-90);letter-spacing:0.01em;
-        ">${prompt}</div>
-        <div style="
-          font-family:var(--font-sans);font-weight:200;
-          font-size:11px;letter-spacing:0.22em;text-transform:uppercase;
-          color:var(--color-cream-25);
-          padding:8px 0;
-        ">···</div>
-      </div>
-    `;
-  }
-
   // ---------------------------------------------------------------------------
   // STEP RENDERERS
   // All async. All await setContent before attaching listeners.
@@ -192,42 +173,10 @@ export function createOnboarding(world, allWorlds) {
   async function renderMission() {
     const m = smesc.mission;
 
-    // Show loading state immediately (no await — don't block the API call)
-    const inner = el.querySelector('#ob-inner');
-    if (inner) {
-      inner.style.transition = 'opacity 0.25s ease';
-      inner.style.opacity = '0';
-      setTimeout(() => {
-        inner.innerHTML = loadingCard(m.prompt);
-        inner.style.opacity = '1';
-      }, 270);
-    }
-
-    let tiles;
-    try {
-      tiles = await api.getMissionTiles({
-        worldId: world.id,
-        worldData: allWorlds,
-        situationAnswer: answers.situation || 'not specified',
-      });
-    } catch (err) {
-      console.error('Mission tile generation failed:', err);
-      tiles = [
-        { id: 'health',        label: 'Health' },
-        { id: 'finances',      label: 'Finances' },
-        { id: 'relationships', label: 'Relationships' },
-        { id: 'work',          label: 'Work and career' },
-      ];
-    }
-
-    const hiddenTile = m.hidden_tile;
-    const allTiles = [...tiles, hiddenTile];
-
     await setContent(tileCard({
       prompt: m.prompt,
-      tiles: allTiles,
+      tiles: m.tiles,
       multi: true,
-      isHidden: hiddenTile.id,
     }));
 
     attachTileListeners({

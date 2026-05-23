@@ -30,39 +30,10 @@ export const api = {
   },
 
   // ---------------------------------------------------------------------------
-  // getMissionTiles — unchanged logic, proxy endpoint
+  // getMissionTiles — RETIRED (Session 11)
+  // Mission tiles are now locked in worlds.json. AI generation removed
+  // because the app had insufficient data at onboarding to personalise.
   // ---------------------------------------------------------------------------
-
-  async getMissionTiles({ worldId, worldData, situationAnswer }) {
-    const world = worldData.find(w => w.id === worldId);
-    if (!world) throw new Error('Unknown world');
-
-    const system = `You are the intelligence layer of Your Life: Unlocked, 
-a life companion app. The user has chosen the ${world.name} world. 
-Your entire response must be valid JSON — an array of 4 tile objects, 
-each with an "id" (snake_case string) and a "label" (short phrase, 
-max 6 words, in the natural language of the ${world.name} world). 
-The tiles represent problem spaces the user might want to address. 
-Include one emotionally honest option that feels natural in this world's language. 
-No preamble. No explanation. JSON array only.`;
-
-    const messages = [{
-      role: 'user',
-      content: `World: ${world.name}
-Situation answer: ${situationAnswer}
-Mission prompt: "${world.onboarding.smesc.mission.prompt}"
-Generate 4 mission tiles.`,
-    }];
-
-    const raw = await this.send({ system, messages, maxTokens: 400 });
-
-    try {
-      const clean = raw.replace(/```json|```/g, '').trim();
-      return JSON.parse(clean);
-    } catch {
-      throw new Error('Failed to parse mission tiles');
-    }
-  },
 
   // ---------------------------------------------------------------------------
   // getTeamReflection — called by team.js after emotionally weighted answers

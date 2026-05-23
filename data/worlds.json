@@ -21,8 +21,14 @@
           },
           "mission": {
             "prompt": "What's the gap?",
-            "tiles": "ai_driven",
-            "hidden_tile": { "id": "relational", "label": "The people closest to me" }
+            "tiles": [
+              { "id": "physical_health",    "label": "My physical health" },
+              { "id": "emotional_wellbeing","label": "My emotional well-being" },
+              { "id": "money",              "label": "Money" },
+              { "id": "relationships",      "label": "My relationships" },
+              { "id": "professional_life",  "label": "My professional life" },
+              { "id": "personal_life",      "label": "My personal life" }
+            ]
           },
           "execution": {
             "statement": "You'll get what you need, when you need it. Nothing before. Nothing after."
@@ -66,8 +72,14 @@
           },
           "mission": {
             "prompt": "What's been left untended?",
-            "tiles": "ai_driven",
-            "hidden_tile": { "id": "relational", "label": "The people I carry quietly" }
+            "tiles": [
+              { "id": "physical_health",    "label": "My health" },
+              { "id": "emotional_wellbeing","label": "How I'm doing inside" },
+              { "id": "money",              "label": "Finances" },
+              { "id": "relationships",      "label": "My relationships" },
+              { "id": "professional_life",  "label": "My work" },
+              { "id": "personal_life",      "label": "My personal life" }
+            ]
           },
           "execution": {
             "statement": "Good stewardship means knowing when to act and when to wait. We'll know the difference."
@@ -113,8 +125,14 @@
           },
           "mission": {
             "prompt": "What's not getting the attention it needs?",
-            "tiles": "ai_driven",
-            "hidden_tile": { "id": "relational", "label": "Honestly… me" }
+            "tiles": [
+              { "id": "physical_health",    "label": "My health" },
+              { "id": "emotional_wellbeing","label": "How I'm feeling" },
+              { "id": "money",              "label": "Finances" },
+              { "id": "relationships",      "label": "My relationships" },
+              { "id": "professional_life",  "label": "My work life" },
+              { "id": "personal_life",      "label": "Myself" }
+            ]
           },
           "execution": {
             "statement": "I'll notice what you miss. You won't have to ask."
@@ -159,8 +177,14 @@
           },
           "mission": {
             "prompt": "What's the terrain asking of you right now?",
-            "tiles": "ai_driven",
-            "hidden_tile": { "id": "relational", "label": "The weight I carry for others" }
+            "tiles": [
+              { "id": "physical_health",    "label": "My physical health" },
+              { "id": "emotional_wellbeing","label": "My emotional well-being" },
+              { "id": "money",              "label": "Money" },
+              { "id": "relationships",      "label": "My relationships" },
+              { "id": "professional_life",  "label": "My professional life" },
+              { "id": "personal_life",      "label": "My personal life" }
+            ]
           },
           "execution": {
             "statement": "I'll read the trail ahead. You focus on the next step."
@@ -205,8 +229,14 @@
           },
           "mission": {
             "prompt": "Where are you leaving points on the field?",
-            "tiles": "ai_driven",
-            "hidden_tile": { "id": "relational", "label": "The people I keep letting down" }
+            "tiles": [
+              { "id": "physical_health",    "label": "My physical health" },
+              { "id": "emotional_wellbeing","label": "My emotional well-being" },
+              { "id": "money",              "label": "Money" },
+              { "id": "relationships",      "label": "My relationships" },
+              { "id": "professional_life",  "label": "My professional life" },
+              { "id": "personal_life",      "label": "My personal life" }
+            ]
           },
           "execution": {
             "statement": "I'll have the film ready. You make the calls."
@@ -251,8 +281,14 @@
           },
           "mission": {
             "prompt": "What peak are you working toward?",
-            "tiles": "ai_driven",
-            "hidden_tile": { "id": "relational", "label": "The people I left at base camp" }
+            "tiles": [
+              { "id": "physical_health",    "label": "My physical health" },
+              { "id": "emotional_wellbeing","label": "My emotional well-being" },
+              { "id": "money",              "label": "Money" },
+              { "id": "relationships",      "label": "My relationships" },
+              { "id": "professional_life",  "label": "My professional life" },
+              { "id": "personal_life",      "label": "My personal life" }
+            ]
           },
           "execution": {
             "statement": "I'll watch conditions while you climb. You'll know when to push and when to hold."
@@ -297,8 +333,14 @@
           },
           "mission": {
             "prompt": "What are you working to master?",
-            "tiles": "ai_driven",
-            "hidden_tile": { "id": "relational", "label": "Showing up for others, not just myself" }
+            "tiles": [
+              { "id": "physical_health",    "label": "My physical health" },
+              { "id": "emotional_wellbeing","label": "My emotional well-being" },
+              { "id": "money",              "label": "Money" },
+              { "id": "relationships",      "label": "My relationships" },
+              { "id": "professional_life",  "label": "My professional life" },
+              { "id": "personal_life",      "label": "My personal life" }
+            ]
           },
           "execution": {
             "statement": "The practice never announces itself. Neither will I."
@@ -342,8 +384,14 @@
           },
           "mission": {
             "prompt": "What keeps pulling you out of the stillness?",
-            "tiles": "ai_driven",
-            "hidden_tile": { "id": "relational", "label": "Something I've been avoiding" }
+            "tiles": [
+              { "id": "physical_health",    "label": "My health" },
+              { "id": "emotional_wellbeing","label": "How I'm doing inside" },
+              { "id": "money",              "label": "Finances" },
+              { "id": "relationships",      "label": "My relationships" },
+              { "id": "professional_life",  "label": "My work" },
+              { "id": "personal_life",      "label": "My personal life" }
+            ]
           },
           "execution": {
             "statement": "Nothing will arrive before it's needed. You have my word."

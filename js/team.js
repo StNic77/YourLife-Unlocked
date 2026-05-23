@@ -233,29 +233,6 @@ export function createTeam(world) {
   }
 
   // ---------------------------------------------------------------------------
-  // AI REFLECTION HELPER
-  // Injects a loading state, calls the API, returns the reflection text.
-  // ---------------------------------------------------------------------------
-
-  async function fetchReflection(context) {
-    // Show loading inline — sets inner content to dots while API works
-    const inner = el.querySelector('#team-inner');
-    if (inner) {
-      const reflEl = inner.querySelector('.team-reflection');
-      if (reflEl) {
-        reflEl.textContent = '···';
-        reflEl.style.letterSpacing = '0.3em';
-      }
-    }
-
-    try {
-      return await api.getTeamReflection(context);
-    } catch {
-      return null;
-    }
-  }
-
-  // ---------------------------------------------------------------------------
   // PARTNER CASCADE — vertical, AI-reflected
   // Each sub-step is a self-contained async function that resolves
   // when the user confirms or escapes.
@@ -284,7 +261,7 @@ export function createTeam(world) {
     p.tenure = await awaitInput('team-input');
     if (p.tenure === null) return;
 
-    // --- STATE (tiles + AI reflection) ---
+    // --- STATE (tiles) ---
     await setContent(tileCard({
       prompt: 'How\'s that going, from your side?',
       tiles: [
@@ -300,15 +277,15 @@ export function createTeam(world) {
     p.state = await awaitTile({ multi: false });
     if (p.state === null) return;
 
-    // AI reflection on relationship state — shown before next question
-    const stateReflection = await api.getTeamReflection({
+    // Fire reflection for state — don't await, inject when ready
+    const stateReflectionPromise = api.getTeamReflection({
       type: 'state',
       partnerName: p.name,
       tenure: p.tenure,
       state: p.state,
-    });
+    }).catch(() => null);
 
-    // --- WORKS (tiles) ---
+    // --- WORKS (tiles) — render immediately, reflection injects when ready ---
     await setContent(tileCard({
       prompt: `Does ${p.name} work?`,
       tiles: [
@@ -318,8 +295,14 @@ export function createTeam(world) {
         { id: 'self_employed',label: 'Self-employed' },
       ],
       multi: false,
-      reflection: stateReflection,
+      reflection: '&nbsp;', // placeholder so reflection slot exists in DOM
     }));
+
+    stateReflectionPromise.then(text => {
+      if (!text) return;
+      const reflEl = el.querySelector('.team-reflection');
+      if (reflEl) { reflEl.textContent = text; reflEl.style.letterSpacing = '0.04em'; }
+    });
 
     p.works = await awaitTile({ multi: false });
     if (p.works === null) return;
@@ -335,23 +318,28 @@ export function createTeam(world) {
       p.profession = await awaitInput('team-input');
       if (p.profession === null) return;
 
-      // AI reflection on profession — shown before birthday question
-      const profReflection = await api.getTeamReflection({
+      // Fire profession reflection — inject into birthday screen
+      const profReflectionPromise = api.getTeamReflection({
         type: 'profession',
         partnerName: p.name,
         profession: p.profession,
         state: p.state,
-      });
+      }).catch(() => null);
 
-      // --- BIRTHDAY ---
       await setContent(inputCard({
         prompt: `${p.name}'s birthday?`,
         placeholder: 'e.g. March 14',
         inputId: 'team-input',
-        reflection: profReflection,
+        reflection: '&nbsp;',
       }));
+
+      profReflectionPromise.then(text => {
+        if (!text) return;
+        const reflEl = el.querySelector('.team-reflection');
+        if (reflEl) { reflEl.textContent = text; reflEl.style.letterSpacing = '0.04em'; }
+      });
+
     } else {
-      // Still ask birthday even if not working
       await setContent(inputCard({
         prompt: `${p.name}'s birthday?`,
         placeholder: 'e.g. March 14',
@@ -362,13 +350,14 @@ export function createTeam(world) {
     p.birthday = await awaitInput('team-input');
     if (p.birthday === null) return;
 
-    // --- LOVE LANGUAGE (tiles + AI reflection) ---
-    const birthdayReflection = await api.getTeamReflection({
+    // Fire birthday reflection — inject into love language screen
+    const birthdayReflectionPromise = api.getTeamReflection({
       type: 'birthday',
       partnerName: p.name,
       birthday: p.birthday,
-    });
+    }).catch(() => null);
 
+    // --- LOVE LANGUAGE ---
     await setContent(tileCard({
       prompt: `How does ${p.name} most feel taken care of?`,
       tiles: [
@@ -380,31 +369,41 @@ export function createTeam(world) {
         { id: 'unsure',  label: 'Not sure yet' },
       ],
       multi: false,
-      reflection: birthdayReflection,
+      reflection: '&nbsp;',
     }));
+
+    birthdayReflectionPromise.then(text => {
+      if (!text) return;
+      const reflEl = el.querySelector('.team-reflection');
+      if (reflEl) { reflEl.textContent = text; reflEl.style.letterSpacing = '0.04em'; }
+    });
 
     p.love_language = await awaitTile({ multi: false });
     if (p.love_language === null) return;
 
-    // Final partner reflection before moving to children
-    const finalReflection = await api.getTeamReflection({
+    // Final partner reflection — fire and inject into closing statement screen
+    const finalReflectionPromise = api.getTeamReflection({
       type: 'partner_complete',
       partnerName: p.name,
       state: p.state,
       love_language: p.love_language,
       profession: p.profession || null,
+    }).catch(() => null);
+
+    await setContent(statementCard({
+      text: '···',
+      ctaLabel: 'continue',
+      escapeLabel: 'that\'s enough for now',
+    }));
+
+    finalReflectionPromise.then(text => {
+      if (!text) return;
+      const textEl = el.querySelector('#team-inner [style*="font-serif"]');
+      if (textEl) textEl.textContent = text;
     });
 
-    // Show final reflection as a brief statement before continuing
-    if (finalReflection) {
-      await setContent(statementCard({
-        text: finalReflection,
-        ctaLabel: 'continue',
-        escapeLabel: 'that\'s enough for now',
-      }));
-      const next = await awaitCta();
-      if (next === 'escape') return;
-    }
+    const next = await awaitCta();
+    if (next === 'escape') return;
   }
 
   // ---------------------------------------------------------------------------
@@ -412,6 +411,9 @@ export function createTeam(world) {
   // ---------------------------------------------------------------------------
 
   async function runChildrenCascade() {
+    const situation = store.get('onboarding')?.answers?.situation;
+    const hasPartner = situation && ['partner', 'partner_kids'].includes(situation);
+
     // First — do they have kids?
     await setContent(tileCard({
       prompt: 'Any children?',
@@ -432,9 +434,14 @@ export function createTeam(world) {
     while (addingChildren && childIndex < 6) {
       const ordinal = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth'][childIndex] || `Child ${childIndex + 1}`;
 
+      // First child prompt — include one-at-a-time signalling
+      const firstPrompt = hasPartner
+        ? 'What\'s your child\'s name? We\'ll add them one at a time.'
+        : 'What\'s your child\'s name? We\'ll add them one at a time.';
+
       await setContent(inputCard({
         prompt: childIndex === 0
-          ? 'What\'s your child\'s name?'
+          ? firstPrompt
           : `${ordinal} child?`,
         placeholder: 'Name',
         inputId: 'team-input',
@@ -545,9 +552,14 @@ export function createTeam(world) {
     const partnerLine = teamData.partner.name
       ? `${teamData.partner.name} is in the picture.`
       : '';
-    const kidsLine = teamData.children.length > 0
-      ? `${teamData.children.map(c => c.name).join(', ')} too.`
-      : '';
+
+    let kidsLine = '';
+    if (teamData.children.length > 0) {
+      const names = teamData.children.map(c => c.name).join(', ');
+      kidsLine = partnerLine
+        ? `${names} too.`
+        : `${names} ${teamData.children.length === 1 ? 'is' : 'are'} in the picture.`;
+    }
 
     const closingText = [partnerLine, kidsLine].filter(Boolean).join(' ')
       || 'The picture is starting to form.';
@@ -769,8 +781,14 @@ export function createTeam(world) {
   }
 
   async function renderPartner() {
-    await runPartnerCascade();
-    // Whether they completed or escaped, move on
+    // Skip partner cascade if the user indicated no partner at onboarding
+    const situation = store.get('onboarding')?.answers?.situation;
+    const hasPartner = situation && ['partner', 'partner_kids'].includes(situation);
+
+    if (hasPartner) {
+      await runPartnerCascade();
+    }
+
     store.set('team', { ...teamData });
     advance();
   }
