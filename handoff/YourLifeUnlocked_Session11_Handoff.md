@@ -6,11 +6,11 @@
 
 ## 1. What This Session Accomplished
 
-A focused thinking session. No code written. Two things resolved.
+Two things: decisions and code.
 
-The gap tile question — which had been deferred since Session 10 — was settled completely. The AI generation approach was retired on principle: the app was making choices before it had any data to support them. The tiles are now locked, plain, and universal. The hidden tile was removed from onboarding entirely. It was solving a problem that doesn't exist yet.
+The gap tile question — deferred since Session 10 — was settled. The AI generation approach was retired on principle: the app was making choices before it had any data to support them. The tiles are now locked, plain, and the hidden tile is removed from onboarding entirely. It was solving a problem that doesn't exist yet.
 
-The Session 12 agenda is clean. The easy fixes go into Session 11 code work. The home screen gets a full deep session with nothing hanging over it.
+All Session 11 code work is complete. Four files updated, committed. The codebase is clean. Session 12 gets the home screen with nothing hanging over it.
 
 ---
 
@@ -33,7 +33,7 @@ AI-generated gap tiles are retired. The app had no meaningful data at the point 
 
 **Why these six:**
 - Physical and emotional health are separated — "staying fit" was covering physical only and missing mental/emotional entirely
-- "Emotional well-being" was chosen over "mental health" — less clinical, passes the Cheesy Hook Check across all worlds
+- "Emotional well-being" chosen over "mental health" — less clinical, passes the Cheesy Hook Check across all worlds
 - Professional and personal life are separate tiles — one can be going well while the other is a mess, and that distinction is high-signal data
 - "Money" not "finances" — plain works
 
@@ -41,55 +41,56 @@ AI-generated gap tiles are retired. The app had no meaningful data at the point 
 
 ### Hidden Tile — Removed from Onboarding
 
-The hidden tile is retired from the onboarding flow. It was a clever solution to a problem that onboarding doesn't actually have. Vulnerability surfaces through use, not through a trick on day one. The app earns what it learns. The hidden tile concept may return elsewhere — it belongs in the home screen cascade where the relationship has had time to develop. Not here.
+The hidden tile is retired from the onboarding flow. Vulnerability surfaces through use, not through a trick on day one. The app earns what it learns. The hidden tile concept may return in the home screen cascade — where the relationship has had time to develop. Not here.
 
 ### Session Structure — Confirmed
 
-Session 11 is the cleanup session. Session 12 is the home screen build.
-
-The back button behaviour through partner cascade sub-steps is deferred to Session 12 alongside the home screen build — no point confirming back button behaviour through a flow that may change once the home screen context is clear.
+Session 12 is the home screen build. Back button behaviour through partner cascade sub-steps is deferred to Session 12 — no point confirming it through a flow that may change once the home screen context is clear.
 
 ---
 
-## 3. Session 11 Build Agenda — Complete List
+## 3. Code Changes — Committed
 
-Everything here is decided. No design decisions required. Pure execution.
+**Commit:** `fix: lock mission tiles, fix partner/children conditionals, async reflections`
 
-### Bug Fixes
+### worlds.json
 
-**Bug: Partner name prompt fires when no partner selected**
-`team.js` — read `store.get('onboarding')?.answers?.situation` before mounting the partner cascade. If no partner is indicated, skip the partner cascade entirely.
+All eight worlds now have locked mission tile arrays. No `ai_driven` strings, no hidden tiles anywhere.
 
-**Bug: Children copy assumes a partner is present**
-`team.js` — children cascade copy needs a partner/no-partner conditional. The "too" pattern is the tell — find and remove it for the no-partner path. Two copy variants, one for each case.
+- Operator has the final six tiles (exact copy above)
+- Range and Meadow use slightly plainer language ("My health", "Finances") where the Operator wording would feel off
+- All other worlds use the Operator set verbatim as placeholders — light language flex to come when those worlds are built
 
-### Gap Tiles
+### onboarding.js
 
-**Retire AI generation**
-`api.js` — `getMissionTiles()` is no longer called from `onboarding.js`. Retire or stub the function. Do not delete `api.js` — `getTeamReflection()` is still active.
+- `renderMission` now reads `m.tiles` directly from the world data — no API call, no loading state, no fallback
+- `api` import removed — onboarding no longer touches the API
+- `loadingCard` function removed — unused
+- `allWorlds` parameter removed from `createOnboarding` — no longer needed
+- Module comment updated to reflect static tiles
 
-**Lock tiles in worlds.json**
-Replace the AI-generated tile logic in `onboarding.js` with a static read from `worlds.json`. The Operator mission tiles are the six listed above. Other worlds get placeholder arrays for now.
+**Note:** If `main.js` calls `createOnboarding(world, allWorlds)`, remove the second argument.
 
-### UX Fix
+### team.js
 
-**Children entry — multiple children signalling**
-The first child prompt doesn't make clear the user can add multiple children one at a time. Add copy: something like "we'll add them one at a time" or a running counter showing how many have been added. Exact copy to be workshopped in session.
+- **Partner conditional** — `renderPartner` now reads `store.get('onboarding')?.answers?.situation` before running the cascade. Only `partner` and `partner_kids` situation answers trigger the partner flow. All others skip it.
+- **Children copy** — `runChildrenCascade` reads the same situation answer. First child prompt now reads "We'll add them one at a time." The "too" pattern in the done screen is fixed — children are described independently if no partner was named.
+- **Reflection latency** — all four `getTeamReflection` calls now fire immediately without blocking the next screen. Each returns a Promise; when it resolves, the text is injected into the `.team-reflection` element already present in the DOM. Screens render instantly. Reflections appear shortly after. No perception of waiting.
+- `fetchReflection` helper removed — no longer used.
 
-### Performance Fix
+### api.js
 
-**AI reflection latency**
-Current behaviour: wait for the AI reflection before showing the next screen. This adds noticeable lag.
-
-Fix: advance to the next screen immediately. Inject the reflection text asynchronously when it arrives. The screen renders at once. The reflection appears shortly after. No perception of waiting.
+- `getMissionTiles` retired and replaced with a comment explaining why. The function body is gone.
+- `getTeamReflection` untouched and active.
+- All infrastructure (endpoint, model, `send`) untouched.
 
 ---
 
 ## 4. Session 12 Agenda — The Home Screen
 
-Session 11 hands off a clean codebase. Session 12 goes deep on the home screen with nothing outstanding.
+Session 12 goes deep. One full session, nothing outstanding, all philosophy already decided.
 
-### Carry In From Session 10c — Already Decided
+### Carry In — Already Decided
 
 - The home screen is a briefing, not a dashboard
 - Day one state is an opening state, not an empty state
@@ -98,7 +99,7 @@ Session 11 hands off a clean codebase. Session 12 goes deep on the home screen w
 - The trust ladder governs what gets offered and when
 - AMPOCC is the invisible engine driving tile selection
 
-### Build Items for Session 12
+### Build Items
 
 - Build `home.js` — the briefing screen
 - Day one state — brief present, honestly unpopulated, one door offered
@@ -126,3 +127,4 @@ The two most relevant for Session 12:
 ---
 
 *Your Life / Unlocked | Session 11 of Many | Confidential Product Document*
+

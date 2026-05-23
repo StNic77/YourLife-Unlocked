@@ -22,12 +22,17 @@
           "mission": {
             "prompt": "What's the gap?",
             "tiles": [
-              { "id": "physical_health",    "label": "My physical health" },
-              { "id": "emotional_wellbeing","label": "My emotional well-being" },
-              { "id": "money",              "label": "Money" },
+              { "id": "getting_organized",  "label": "Getting organized" },
+              { "id": "time",               "label": "How I spend my time" },
+              { "id": "working_toward",     "label": "Something I'm working toward" },
+              { "id": "daily_routine",      "label": "My daily routine" },
               { "id": "relationships",      "label": "My relationships" },
               { "id": "professional_life",  "label": "My professional life" },
-              { "id": "personal_life",      "label": "My personal life" }
+              { "id": "money",              "label": "Money" },
+              { "id": "physical_health",    "label": "My physical health" },
+              { "id": "emotional_wellbeing","label": "My emotional well-being" },
+              { "id": "personal_life",      "label": "My personal life" },
+              { "id": "undealt",            "label": "Something I haven't dealt with yet" }
             ]
           },
           "execution": {
@@ -73,12 +78,17 @@
           "mission": {
             "prompt": "What's been left untended?",
             "tiles": [
-              { "id": "physical_health",    "label": "My health" },
-              { "id": "emotional_wellbeing","label": "How I'm doing inside" },
-              { "id": "money",              "label": "Finances" },
+              { "id": "getting_organized",  "label": "Getting organized" },
+              { "id": "time",               "label": "How I spend my time" },
+              { "id": "working_toward",     "label": "Something I'm working toward" },
+              { "id": "daily_routine",      "label": "My daily routine" },
               { "id": "relationships",      "label": "My relationships" },
               { "id": "professional_life",  "label": "My work" },
-              { "id": "personal_life",      "label": "My personal life" }
+              { "id": "money",              "label": "Finances" },
+              { "id": "physical_health",    "label": "My health" },
+              { "id": "emotional_wellbeing","label": "How I'm doing inside" },
+              { "id": "personal_life",      "label": "My personal life" },
+              { "id": "undealt",            "label": "Something I haven't dealt with yet" }
             ]
           },
           "execution": {
@@ -126,12 +136,17 @@
           "mission": {
             "prompt": "What's not getting the attention it needs?",
             "tiles": [
-              { "id": "physical_health",    "label": "My health" },
-              { "id": "emotional_wellbeing","label": "How I'm feeling" },
-              { "id": "money",              "label": "Finances" },
+              { "id": "getting_organized",  "label": "Getting organized" },
+              { "id": "time",               "label": "How I spend my time" },
+              { "id": "working_toward",     "label": "Something I'm tending toward" },
+              { "id": "daily_routine",      "label": "My daily routine" },
               { "id": "relationships",      "label": "My relationships" },
               { "id": "professional_life",  "label": "My work life" },
-              { "id": "personal_life",      "label": "Myself" }
+              { "id": "money",              "label": "Finances" },
+              { "id": "physical_health",    "label": "My health" },
+              { "id": "emotional_wellbeing","label": "How I'm feeling" },
+              { "id": "personal_life",      "label": "Myself" },
+              { "id": "undealt",            "label": "Something I haven't dealt with yet" }
             ]
           },
           "execution": {
@@ -178,12 +193,17 @@
           "mission": {
             "prompt": "What's the terrain asking of you right now?",
             "tiles": [
-              { "id": "physical_health",    "label": "My physical health" },
-              { "id": "emotional_wellbeing","label": "My emotional well-being" },
-              { "id": "money",              "label": "Money" },
+              { "id": "getting_organized",  "label": "Getting organized" },
+              { "id": "time",               "label": "How I spend my time" },
+              { "id": "working_toward",     "label": "Something I'm moving toward" },
+              { "id": "daily_routine",      "label": "My daily routine" },
               { "id": "relationships",      "label": "My relationships" },
               { "id": "professional_life",  "label": "My professional life" },
-              { "id": "personal_life",      "label": "My personal life" }
+              { "id": "money",              "label": "Money" },
+              { "id": "physical_health",    "label": "My physical health" },
+              { "id": "emotional_wellbeing","label": "My emotional well-being" },
+              { "id": "personal_life",      "label": "My personal life" },
+              { "id": "undealt",            "label": "Something I haven't dealt with yet" }
             ]
           },
           "execution": {
@@ -230,12 +250,17 @@
           "mission": {
             "prompt": "Where are you leaving points on the field?",
             "tiles": [
-              { "id": "physical_health",    "label": "My physical health" },
-              { "id": "emotional_wellbeing","label": "My emotional well-being" },
-              { "id": "money",              "label": "Money" },
+              { "id": "getting_organized",  "label": "Getting organized" },
+              { "id": "time",               "label": "How I spend my time" },
+              { "id": "working_toward",     "label": "Something I'm building toward" },
+              { "id": "daily_routine",      "label": "My daily routine" },
               { "id": "relationships",      "label": "My relationships" },
               { "id": "professional_life",  "label": "My professional life" },
-              { "id": "personal_life",      "label": "My personal life" }
+              { "id": "money",              "label": "Money" },
+              { "id": "physical_health",    "label": "My physical health" },
+              { "id": "emotional_wellbeing","label": "My emotional well-being" },
+              { "id": "personal_life",      "label": "My personal life" },
+              { "id": "undealt",            "label": "Something I haven't dealt with yet" }
             ]
           },
           "execution": {
@@ -282,12 +307,17 @@
           "mission": {
             "prompt": "What peak are you working toward?",
             "tiles": [
-              { "id": "physical_health",    "label": "My physical health" },
-              { "id": "emotional_wellbeing","label": "My emotional well-being" },
-              { "id": "money",              "label": "Money" },
+              { "id": "getting_organized",  "label": "Getting organized" },
+              { "id": "time",               "label": "How I spend my time" },
+              { "id": "working_toward",     "label": "Something I'm climbing toward" },
+              { "id": "daily_routine",      "label": "My daily routine" },
               { "id": "relationships",      "label": "My relationships" },
               { "id": "professional_life",  "label": "My professional life" },
-              { "id": "personal_life",      "label": "My personal life" }
+              { "id": "money",              "label": "Money" },
+              { "id": "physical_health",    "label": "My physical health" },
+              { "id": "emotional_wellbeing","label": "My emotional well-being" },
+              { "id": "personal_life",      "label": "My personal life" },
+              { "id": "undealt",            "label": "Something I haven't dealt with yet" }
             ]
           },
           "execution": {
@@ -334,12 +364,17 @@
           "mission": {
             "prompt": "What are you working to master?",
             "tiles": [
-              { "id": "physical_health",    "label": "My physical health" },
-              { "id": "emotional_wellbeing","label": "My emotional well-being" },
-              { "id": "money",              "label": "Money" },
+              { "id": "getting_organized",  "label": "Getting organized" },
+              { "id": "time",               "label": "How I spend my time" },
+              { "id": "working_toward",     "label": "Something I'm working toward" },
+              { "id": "daily_routine",      "label": "My daily routine" },
               { "id": "relationships",      "label": "My relationships" },
               { "id": "professional_life",  "label": "My professional life" },
-              { "id": "personal_life",      "label": "My personal life" }
+              { "id": "money",              "label": "Money" },
+              { "id": "physical_health",    "label": "My physical health" },
+              { "id": "emotional_wellbeing","label": "My emotional well-being" },
+              { "id": "personal_life",      "label": "My personal life" },
+              { "id": "undealt",            "label": "Something I haven't dealt with yet" }
             ]
           },
           "execution": {
@@ -385,12 +420,17 @@
           "mission": {
             "prompt": "What keeps pulling you out of the stillness?",
             "tiles": [
-              { "id": "physical_health",    "label": "My health" },
-              { "id": "emotional_wellbeing","label": "How I'm doing inside" },
-              { "id": "money",              "label": "Finances" },
+              { "id": "getting_organized",  "label": "Getting organized" },
+              { "id": "time",               "label": "How I spend my time" },
+              { "id": "working_toward",     "label": "Something I'm moving toward" },
+              { "id": "daily_routine",      "label": "My daily routine" },
               { "id": "relationships",      "label": "My relationships" },
               { "id": "professional_life",  "label": "My work" },
-              { "id": "personal_life",      "label": "My personal life" }
+              { "id": "money",              "label": "Finances" },
+              { "id": "physical_health",    "label": "My health" },
+              { "id": "emotional_wellbeing","label": "How I'm doing inside" },
+              { "id": "personal_life",      "label": "My personal life" },
+              { "id": "undealt",            "label": "Something I haven't dealt with yet" }
             ]
           },
           "execution": {
