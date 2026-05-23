@@ -2,6 +2,14 @@ import { store } from './store.js';
 import { transitions } from './transitions.js';
 
 // ---------------------------------------------------------------------------
+// DEV MODE — Hotspot visualiser
+// Add ?dev=hotspots to the URL to see all hotspot positions as coloured rings.
+// Remove the param (or just navigate normally) to hide them.
+// Never visible in production — URL param only.
+// ---------------------------------------------------------------------------
+const DEV_HOTSPOTS = new URLSearchParams(window.location.search).get('dev') === 'hotspots';
+
+// ---------------------------------------------------------------------------
 // HOME MODULE — The Room
 //
 // The home screen is a room. The user's world rendered as a physical space.
@@ -35,8 +43,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'atac',
       label: 'Brief',
-      x: 44, y: 52,
-      r: 36,
+      x: 42, y: 54,   // ATAC on dock — centre of device
+      r: 44,
       primary: true,
       urgent: true,
       domain: 'brief',
@@ -44,8 +52,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'peltors',
       label: 'Alerts',
-      x: 48, y: 20,
-      r: 28,
+      x: 47, y: 19,   // Peltors on hook — upper centre
+      r: 36,
       primary: false,
       urgent: true,
       domain: 'alerts',
@@ -53,8 +61,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'keys',
       label: 'Vehicles',
-      x: 58, y: 48,
-      r: 22,
+      x: 57, y: 47,   // Keys — right of ATAC
+      r: 32,
       primary: false,
       urgent: true,
       domain: 'vehicles',
@@ -62,8 +70,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'calendar',
       label: 'Calendar',
-      x: 78, y: 22,
-      r: 30,
+      x: 80, y: 20,   // Calendar — upper right
+      r: 38,
       primary: false,
       urgent: true,
       domain: 'calendar',
@@ -71,8 +79,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'notebook',
       label: 'Capture',
-      x: 35, y: 80,
-      r: 24,
+      x: 36, y: 82,   // Notebook on bench — foreground lower left
+      r: 34,
       primary: false,
       urgent: false,
       domain: 'capture',
@@ -80,8 +88,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'maintenance',
       label: 'Maintenance',
-      x: 70, y: 72,
-      r: 22,
+      x: 68, y: 74,   // Maintenance tray — lower right
+      r: 32,
       primary: false,
       urgent: true,
       domain: 'maintenance',
@@ -89,8 +97,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'workout',
       label: 'Health',
-      x: 18, y: 72,
-      r: 22,
+      x: 16, y: 74,   // Footwear — lower left shelf
+      r: 32,
       primary: false,
       urgent: false,
       domain: 'health',
@@ -519,6 +527,11 @@ export function createHome(world) {
       const hasUrgent = urgentByObj[spot.id]?.length > 0;
       const btn = document.createElement('button');
 
+      const devStyle = DEV_HOTSPOTS ? `
+        border:2px solid ${spot.primary ? 'rgba(100,200,100,0.8)' : 'rgba(100,160,220,0.8)'};
+        background:${spot.primary ? 'rgba(100,200,100,0.1)' : 'rgba(100,160,220,0.08)'};
+      ` : '';
+
       btn.style.cssText = `
         position:absolute;
         left:${spot.x}%;top:${spot.y}%;
@@ -528,9 +541,25 @@ export function createHome(world) {
         border:none;background:transparent;
         cursor:pointer;
         -webkit-tap-highlight-color:transparent;
-        opacity:0;
-        animation:fadeIn 0.6s ease-out ${spot.primary ? '1.0' : '1.3'}s both;
+        opacity:${DEV_HOTSPOTS ? '1' : '0'};
+        animation:${DEV_HOTSPOTS ? 'none' : `fadeIn 0.6s ease-out ${spot.primary ? '1.0' : '1.3'}s both`};
+        ${devStyle}
       `;
+
+      // Dev label — shows object name and position
+      if (DEV_HOTSPOTS) {
+        const label = document.createElement('div');
+        label.style.cssText = [
+          'position:absolute;top:50%;left:50%;',
+          'transform:translate(-50%,-50%);',
+          'font-family:monospace;font-size:9px;',
+          'color:rgba(255,255,255,0.9);',
+          'text-align:center;pointer-events:none;',
+          'white-space:nowrap;line-height:1.4;',
+        ].join('');
+        label.textContent = spot.label + '\n' + spot.x + ',' + spot.y;
+        btn.appendChild(label);
+      }
 
       // Urgent ring on the object
       if (hasUrgent) {
