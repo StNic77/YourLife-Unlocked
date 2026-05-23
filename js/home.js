@@ -43,7 +43,7 @@ const HOTSPOT_MAPS = {
     {
       id: 'atac',
       label: 'Brief',
-      x: 42, y: 54,   // ATAC on dock — centre of device
+      x: 47, y: 49,   // ATAC on dock — centre of device
       r: 44,
       primary: true,
       urgent: true,
@@ -61,7 +61,7 @@ const HOTSPOT_MAPS = {
     {
       id: 'keys',
       label: 'Vehicles',
-      x: 57, y: 47,   // Keys — right of ATAC
+      x: 62, y: 47,   // Keys — right of ATAC
       r: 32,
       primary: false,
       urgent: true,
@@ -70,7 +70,7 @@ const HOTSPOT_MAPS = {
     {
       id: 'calendar',
       label: 'Calendar',
-      x: 80, y: 20,   // Calendar — upper right
+      x: 85, y: 30,   // Calendar — upper right
       r: 38,
       primary: false,
       urgent: true,
@@ -79,7 +79,7 @@ const HOTSPOT_MAPS = {
     {
       id: 'notebook',
       label: 'Capture',
-      x: 36, y: 82,   // Notebook on bench — foreground lower left
+      x: 51, y: 87,   // Notebook on bench — foreground lower left
       r: 34,
       primary: false,
       urgent: false,
@@ -97,7 +97,7 @@ const HOTSPOT_MAPS = {
     {
       id: 'workout',
       label: 'Health',
-      x: 16, y: 74,   // Footwear — lower left shelf
+      x: 21, y: 79,   // Footwear — lower left shelf
       r: 32,
       primary: false,
       urgent: false,
