@@ -43,7 +43,7 @@ const HOTSPOT_MAPS = {
     {
       id: 'atac',
       label: 'Brief',
-      x: 47, y: 49,   // ATAC on dock — centre of device
+      x: 48, y: 46,   // ATAC on dock — centre of device
       r: 44,
       primary: true,
       urgent: true,
@@ -52,7 +52,7 @@ const HOTSPOT_MAPS = {
     {
       id: 'peltors',
       label: 'Alerts',
-      x: 47, y: 19,   // Peltors on hook — upper centre
+      x: 49, y: 21,   // Peltors on hook — upper centre
       r: 36,
       primary: false,
       urgent: true,
@@ -61,8 +61,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'keys',
       label: 'Vehicles',
-      x: 62, y: 47,   // Keys — right of ATAC
-      r: 32,
+      x: 65, y: 45,   // Keys — right of ATAC
+      r: 36,
       primary: false,
       urgent: true,
       domain: 'vehicles',
@@ -70,7 +70,7 @@ const HOTSPOT_MAPS = {
     {
       id: 'calendar',
       label: 'Calendar',
-      x: 85, y: 30,   // Calendar — upper right
+      x: 87, y: 30,   // Calendar — upper right
       r: 38,
       primary: false,
       urgent: true,
@@ -79,8 +79,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'notebook',
       label: 'Capture',
-      x: 51, y: 87,   // Notebook on bench — foreground lower left
-      r: 34,
+      x: 56, y: 87,   // Notebook on bench — foreground lower left
+      r: 40,
       primary: false,
       urgent: false,
       domain: 'capture',
@@ -97,7 +97,7 @@ const HOTSPOT_MAPS = {
     {
       id: 'workout',
       label: 'Health',
-      x: 21, y: 79,   // Footwear — lower left shelf
+      x: 21, y: 81,   // Footwear — lower left shelf
       r: 32,
       primary: false,
       urgent: false,
