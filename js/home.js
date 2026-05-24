@@ -615,51 +615,49 @@ export function createHome(world) {
     });
 
     // ── Coordinate inspector — DEV_HOTSPOTS only ────────────────────────────
-    // Tap anywhere on the room to read the x,y percentage at that point.
+    // Tap anywhere on the hotspot layer to read the x,y percentage at that point.
+    // The hotspot layer covers the full room and receives all taps — the room
+    // background-image div sits beneath it and doesn't receive pointer events.
     // Readout appears at the tap location, auto-dismisses after 3 seconds.
-    // Tapping a hotspot still opens the brief — inspector is additive.
+    // Tapping a hotspot opens the brief AND shows coordinates — both fire.
     if (DEV_HOTSPOTS) {
-      const room = el.querySelector('#home-room');
-      if (room) {
-        let inspectorEl = null;
-        let dismissTimer = null;
+      let inspectorEl = null;
+      let dismissTimer = null;
 
-        room.addEventListener('click', (e) => {
-          const rect = room.getBoundingClientRect();
-          const xPct = Math.round(((e.clientX - rect.left) / rect.width)  * 100);
-          const yPct = Math.round(((e.clientY - rect.top)  / rect.height) * 100);
+      layer.addEventListener('click', (e) => {
+        const rect = layer.getBoundingClientRect();
+        const xPct = Math.round(((e.clientX - rect.left) / rect.width)  * 100);
+        const yPct = Math.round(((e.clientY - rect.top)  / rect.height) * 100);
 
-          // Clear any existing readout + timer
-          if (dismissTimer) { clearTimeout(dismissTimer); dismissTimer = null; }
-          if (inspectorEl)  { inspectorEl.remove(); inspectorEl = null; }
+        // Clear any existing readout + timer
+        if (dismissTimer) { clearTimeout(dismissTimer); dismissTimer = null; }
+        if (inspectorEl)  { inspectorEl.remove(); inspectorEl = null; }
 
-          // Build readout — pinned to tap point, stays inside the room
-          const readout = document.createElement('div');
-          readout.style.cssText = [
-            'position:absolute;',
-            'pointer-events:none;',
-            'font-family:monospace;font-size:12px;line-height:1.5;',
-            'color:#fff;background:rgba(0,0,0,0.75);',
-            'padding:6px 10px;border-radius:3px;',
-            'border:1px solid rgba(100,200,100,0.6);',
-            'white-space:nowrap;z-index:999;',
-            `left:${xPct}%;top:${yPct}%;`,
-            'transform:translate(10px,-50%);',   // offset right so finger doesn't cover it
-          ].join('');
-          readout.textContent = `x: ${xPct}, y: ${yPct}`;
+        // Build readout — pinned to tap point
+        const readout = document.createElement('div');
+        readout.style.cssText = [
+          'position:absolute;',
+          'pointer-events:none;',
+          'font-family:monospace;font-size:12px;line-height:1.5;',
+          'color:#fff;background:rgba(0,0,0,0.75);',
+          'padding:6px 10px;border-radius:3px;',
+          'border:1px solid rgba(100,200,100,0.6);',
+          'white-space:nowrap;z-index:999;',
+          `left:${xPct}%;top:${yPct}%;`,
+          'transform:translate(10px,-50%);',   // offset right so finger doesn't cover it
+        ].join('');
+        readout.textContent = `x: ${xPct}, y: ${yPct}`;
 
-          room.style.position = 'absolute'; // ensure positioned parent
-          room.appendChild(readout);
-          inspectorEl = readout;
+        layer.appendChild(readout);
+        inspectorEl = readout;
 
-          // Auto-dismiss after 3 s
-          dismissTimer = setTimeout(() => {
-            readout.remove();
-            inspectorEl = null;
-            dismissTimer = null;
-          }, 3000);
-        });
-      }
+        // Auto-dismiss after 3 s
+        dismissTimer = setTimeout(() => {
+          readout.remove();
+          inspectorEl = null;
+          dismissTimer = null;
+        }, 3000);
+      });
     }
   }
 
