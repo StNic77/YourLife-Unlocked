@@ -238,6 +238,19 @@ export function createTeam(world) {
   // when the user confirms or escapes.
   // ---------------------------------------------------------------------------
 
+  // pronoun(p, form) — returns the correct pronoun for the partner.
+  // form: 'subjective' (she/he/they), 'objective' (her/him/them),
+  //       'possessive' (her/his/their)
+  // Falls back to 'they/them/their' if pronoun not yet set.
+  function pronoun(p, form) {
+    const map = {
+      she:  { subjective: 'she',  objective: 'her',  possessive: 'her'   },
+      he:   { subjective: 'he',   objective: 'him',  possessive: 'his'   },
+      they: { subjective: 'they', objective: 'them', possessive: 'their' },
+    };
+    return (map[p.pronoun] || map.they)[form];
+  }
+
   async function runPartnerCascade() {
     const p = teamData.partner;
 
@@ -250,6 +263,20 @@ export function createTeam(world) {
 
     p.name = await awaitInput('team-input');
     if (p.name === null) return; // escaped
+
+    // --- PRONOUN ---
+    await setContent(tileCard({
+      prompt: `How do you refer to ${p.name}?`,
+      tiles: [
+        { id: 'she',  label: 'She / her' },
+        { id: 'he',   label: 'He / him' },
+        { id: 'they', label: 'They / them' },
+      ],
+      multi: false,
+    }));
+
+    p.pronoun = await awaitTile({ multi: false });
+    if (p.pronoun === null) return;
 
     // --- TENURE ---
     await setContent(inputCard({
@@ -281,6 +308,7 @@ export function createTeam(world) {
     const stateReflectionPromise = api.getTeamReflection({
       type: 'state',
       partnerName: p.name,
+      partnerPronoun: p.pronoun || 'they',
       tenure: p.tenure,
       state: p.state,
     }).catch(() => null);
@@ -310,7 +338,7 @@ export function createTeam(world) {
     // --- PROFESSION (conditional) ---
     if (p.works !== 'no') {
       await setContent(inputCard({
-        prompt: 'What does she do?',
+        prompt: `What does ${pronoun(p, 'subjective')} do?`,
         placeholder: 'Profession or role',
         inputId: 'team-input',
       }));
@@ -322,6 +350,7 @@ export function createTeam(world) {
       const profReflectionPromise = api.getTeamReflection({
         type: 'profession',
         partnerName: p.name,
+        partnerPronoun: p.pronoun || 'they',
         profession: p.profession,
         state: p.state,
       }).catch(() => null);
@@ -354,6 +383,7 @@ export function createTeam(world) {
     const birthdayReflectionPromise = api.getTeamReflection({
       type: 'birthday',
       partnerName: p.name,
+      partnerPronoun: p.pronoun || 'they',
       birthday: p.birthday,
     }).catch(() => null);
 
@@ -385,6 +415,7 @@ export function createTeam(world) {
     const finalReflectionPromise = api.getTeamReflection({
       type: 'partner_complete',
       partnerName: p.name,
+      partnerPronoun: p.pronoun || 'they',
       state: p.state,
       love_language: p.love_language,
       profession: p.profession || null,
@@ -459,7 +490,16 @@ export function createTeam(world) {
       const age = await awaitInput('team-input');
       if (age === null) return;
 
-      teamData.children.push({ name, age });
+      // --- BIRTHDAY (skippable) ---
+      await setContent(inputCard({
+        prompt: `When is ${name}'s birthday?`,
+        placeholder: 'e.g. March 14',
+        inputId: 'team-input',
+      }));
+
+      const birthday = await awaitInput('team-input'); // null if skipped — that's fine
+
+      teamData.children.push({ name, age, birthday: birthday || null });
       childIndex++;
 
       // After each child — offer to add another or continue

@@ -180,6 +180,25 @@ function getUrgentItems() {
     }
   }
 
+  // Children's birthdays within 14 days — same pattern as partner
+  if (Array.isArray(team?.children)) {
+    team.children.forEach(child => {
+      if (!child.birthday) return;
+      const daysUntil = daysUntilDate(child.birthday);
+      if (daysUntil !== null && daysUntil <= 14 && daysUntil >= 0) {
+        items.push({
+          id: `child_birthday_${child.name}`,
+          object: 'calendar',
+          domain: 'calendar',
+          title: `${child.name}'s birthday`,
+          body: daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil} days`,
+          snoozable: true,
+          snoozed_until: null,
+        });
+      }
+    });
+  }
+
   // Check store for any saved urgent items
   const stored = store.get('urgent_items') || [];
   return [...items, ...stored.filter(i => !isSnoozed(i))];

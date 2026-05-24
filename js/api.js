@@ -38,19 +38,25 @@ export const api = {
   // ---------------------------------------------------------------------------
   // getTeamReflection — called by team.js after emotionally weighted answers
   // Returns a single sentence — warm, quiet, never a question
+  // partnerPronoun: 'she' | 'he' | 'they' — used so the AI never assumes
   // ---------------------------------------------------------------------------
 
-  async getTeamReflection({ type, partnerName, tenure, state, works,
+  async getTeamReflection({ type, partnerName, partnerPronoun, tenure, state, works,
     profession, birthday, love_language }) {
 
     const contextParts = [];
-    if (partnerName)   contextParts.push(`Partner's name: ${partnerName}`);
-    if (tenure)        contextParts.push(`Together: ${tenure}`);
-    if (state)         contextParts.push(`Relationship state: ${state}`);
-    if (works)         contextParts.push(`Partner works: ${works}`);
-    if (profession)    contextParts.push(`Profession: ${profession}`);
-    if (birthday)      contextParts.push(`Birthday: ${birthday}`);
-    if (love_language) contextParts.push(`Love language: ${love_language}`);
+    if (partnerName)    contextParts.push(`Partner's name: ${partnerName}`);
+    if (partnerPronoun) {
+      const objective  = partnerPronoun === 'she' ? 'her' : partnerPronoun === 'he' ? 'him' : 'them';
+      const possessive = partnerPronoun === 'she' ? 'her' : partnerPronoun === 'he' ? 'his' : 'their';
+      contextParts.push(`Partner's pronouns: ${partnerPronoun}/${objective}/${possessive}`);
+    }
+    if (tenure)         contextParts.push(`Together: ${tenure}`);
+    if (state)          contextParts.push(`Relationship state: ${state}`);
+    if (works)          contextParts.push(`Partner works: ${works}`);
+    if (profession)     contextParts.push(`Profession: ${profession}`);
+    if (birthday)       contextParts.push(`Birthday: ${birthday}`);
+    if (love_language)  contextParts.push(`Love language: ${love_language}`);
 
     const typeInstructions = {
       state:            'The user just described the current state of their relationship.',
@@ -63,6 +69,7 @@ export const api = {
 The user is sharing details about the people they care about during onboarding.
 Your entire response must be ONE sentence only — warm, brief, never therapeutic, never a question.
 Acknowledge what was just shared as a thoughtful person would. Under 20 words.
+Use the partner's correct pronouns as provided in context. Never assume gender.
 No preamble. No explanation. The sentence only.`;
 
     const messages = [{
