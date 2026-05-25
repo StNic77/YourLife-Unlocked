@@ -1,5 +1,6 @@
 import { transitions } from './transitions.js';
 import { store } from './store.js';
+import { api } from './api.js';
 
 // ---------------------------------------------------------------------------
 // ONBOARDING MODULE
@@ -14,6 +15,10 @@ import { store } from './store.js';
 
 const STEPS = [
   'arrival',
+  'name',
+  'pronouns',
+  'country',
+  'province',
   'situation',
   'mission',
   'execution',
@@ -22,7 +27,7 @@ const STEPS = [
   'closeout',
 ];
 
-export function createOnboarding(world) {
+export function createOnboarding(world, { provinceKnown = false } = {}) {
   const el = document.createElement('div');
   el.className = 'screen';
   el.id = 'screen-onboarding';
@@ -154,6 +159,338 @@ export function createOnboarding(world) {
     attachCtaListener(() => advance());
   }
 
+
+  // ---------------------------------------------------------------------------
+  // NAME
+  // ---------------------------------------------------------------------------
+
+  async function renderName() {
+    const worldPrompts = {
+      operator:  "What do I call you?",
+      range:     "What do they call you?",
+      garden:    "What's your name?",
+      journey:   "What's your name?",
+      playbook:  "What do I call you?",
+      summit:    "What's your name?",
+      practice:  "What's your name?",
+      meadow:    "What would you like to be called?",
+    };
+    const prompt = worldPrompts[world.id] || "What's your name?";
+
+    await setContent(`
+      <div style="display:flex;flex-direction:column;gap:20px;">
+        <div style="
+          font-family:var(--font-serif);font-style:italic;font-weight:300;
+          font-size:clamp(24px,6vw,34px);line-height:1.3;
+          color:var(--color-cream-90);letter-spacing:0.01em;
+        ">${prompt}</div>
+        <input
+          id="ob-name-input"
+          type="text"
+          placeholder="First name"
+          autocomplete="given-name"
+          style="
+            background:transparent;
+            border:none;
+            border-bottom:0.5px solid var(--color-cream-25);
+            border-radius:0;
+            padding:10px 0;
+            font-family:var(--font-sans);font-weight:200;
+            font-size:16px;letter-spacing:0.04em;
+            color:var(--color-cream-90);
+            outline:none;
+            width:100%;
+            transition:border-color 0.2s;
+          "
+        />
+        <button class="ob-cta" data-action="confirm" disabled style="
+          align-self:flex-start;margin-top:4px;
+          padding:13px 32px;
+          border:0.5px solid var(--color-cream-15);border-radius:2px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:11px;letter-spacing:0.28em;text-transform:uppercase;
+          color:var(--color-cream-40);
+          transition:all 0.3s ease;cursor:default;
+        ">continue</button>
+      </div>
+    `);
+
+    await new Promise(resolve => {
+      const inner = el.querySelector('#ob-inner');
+      const input = inner.querySelector('#ob-name-input');
+      const btn   = inner.querySelector('.ob-cta[data-action="confirm"]');
+
+      input.focus();
+
+      input.addEventListener('focus', () => { input.style.borderBottomColor = 'var(--color-cream-60)'; });
+      input.addEventListener('blur',  () => { input.style.borderBottomColor = 'var(--color-cream-25)'; });
+
+      input.addEventListener('input', () => {
+        const has = input.value.trim().length > 0;
+        btn.disabled = !has;
+        btn.style.borderColor = has ? 'var(--color-cream-40)' : 'var(--color-cream-15)';
+        btn.style.color       = has ? 'var(--color-cream-90)' : 'var(--color-cream-40)';
+        btn.style.cursor      = has ? 'pointer' : 'default';
+      });
+
+      const confirm = () => {
+        const val = input.value.trim();
+        if (!val) return;
+        answers.name = val;
+        resolve();
+      };
+
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') confirm(); });
+
+      btn.addEventListener('mouseenter', () => {
+        if (!btn.disabled) { btn.style.background = 'rgba(240,235,218,0.08)'; btn.style.borderColor = 'var(--color-cream-60)'; }
+      });
+      btn.addEventListener('mouseleave', () => {
+        if (!btn.disabled) { btn.style.background = 'transparent'; btn.style.borderColor = 'var(--color-cream-40)'; }
+      });
+      btn.addEventListener('click', confirm, { once: true });
+    });
+
+    advance();
+  }
+
+  // ---------------------------------------------------------------------------
+  // PRONOUNS
+  // ---------------------------------------------------------------------------
+
+  async function renderPronouns() {
+    await setContent(tileCard({
+      prompt: 'How do you refer to yourself?',
+      tiles: [
+        { id: 'he',   label: 'He / him' },
+        { id: 'she',  label: 'She / her' },
+        { id: 'they', label: 'They / them' },
+        { id: 'skip', label: 'Prefer not to say' },
+      ],
+      multi: false,
+    }));
+
+    attachTileListeners({
+      multi: false,
+      onConfirm: selected => {
+        answers.pronouns = selected[0] === 'skip' ? null : selected[0];
+        advance();
+      },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // COUNTRY
+  // ---------------------------------------------------------------------------
+
+  async function renderCountry() {
+    await setContent(tileCard({
+      prompt: 'Where are you based?',
+      tiles: [
+        { id: 'CA',    label: 'Canada' },
+        { id: 'US',    label: 'United States' },
+        { id: 'UK',    label: 'United Kingdom' },
+        { id: 'other', label: 'Somewhere else' },
+      ],
+      multi: false,
+    }));
+
+    attachTileListeners({
+      multi: false,
+      onConfirm: selected => {
+        answers.country = selected[0];
+        advance();
+      },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // PROVINCE / STATE / REGION
+  // Text input, AI-resolved. Escapable with a warning.
+  // ---------------------------------------------------------------------------
+
+  async function renderProvince() {
+    // If location module already captured home province, skip this step silently
+    if (provinceKnown) {
+      advance();
+      return;
+    }
+
+    const placeholders = {
+      CA: 'e.g. BC, Alberta, Ontario',
+      US: 'e.g. WA, Texas, New York',
+      UK: 'e.g. ENG, Scotland, Wales',
+      other: 'Province, state, or region',
+    };
+    const placeholder = placeholders[answers.country] || placeholders.other;
+
+    const worldSkipWarning = {
+      operator:  'Some features need your location to operate. You can add it later.',
+      range:     'Some things work better when I know your territory. You can add it later.',
+      garden:    'I'll be able to tend things better once I know where you are. You can add it later.',
+      journey:   'Some features need your location to work fully. You can add it later.',
+      playbook:  'Some plays need a home field. You can add it later.',
+      summit:    'Some conditions depend on knowing your region. You can add it later.',
+      practice:  'Some features need your location. You can add it later.',
+      meadow:    'A few things work better when I know where you are. You can add it later.',
+    };
+    const skipWarning = worldSkipWarning[world.id] || 'Some features need your location to work fully. You can add it later.';
+
+    await setContent(`
+      <div style="display:flex;flex-direction:column;gap:20px;">
+        <div style="
+          font-family:var(--font-serif);font-style:italic;font-weight:300;
+          font-size:clamp(24px,6vw,34px);line-height:1.3;
+          color:var(--color-cream-90);letter-spacing:0.01em;
+        ">Which province or state?</div>
+        <input
+          id="ob-province-input"
+          type="text"
+          placeholder="${placeholder}"
+          autocomplete="address-level1"
+          style="
+            background:transparent;
+            border:none;
+            border-bottom:0.5px solid var(--color-cream-25);
+            border-radius:0;
+            padding:10px 0;
+            font-family:var(--font-sans);font-weight:200;
+            font-size:16px;letter-spacing:0.04em;
+            color:var(--color-cream-90);
+            outline:none;
+            width:100%;
+            transition:border-color 0.2s;
+          "
+        />
+        <div id="ob-province-status" style="
+          font-family:var(--font-sans);font-weight:200;
+          font-size:11px;letter-spacing:0.12em;
+          color:var(--color-cream-40);
+          min-height:16px;
+          transition:opacity 0.2s;
+        "></div>
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:4px;">
+          <button class="ob-cta" data-action="confirm" disabled style="
+            padding:13px 32px;
+            border:0.5px solid var(--color-cream-15);border-radius:2px;
+            font-family:var(--font-sans);font-weight:300;
+            font-size:11px;letter-spacing:0.28em;text-transform:uppercase;
+            color:var(--color-cream-40);
+            transition:all 0.3s ease;cursor:default;
+          ">continue</button>
+          <button id="ob-province-skip" style="
+            font-family:var(--font-sans);font-weight:200;
+            font-size:10px;letter-spacing:0.22em;text-transform:uppercase;
+            color:var(--color-cream-25);
+            padding:8px 0;
+            transition:color 0.3s ease;
+            background:none;border:none;cursor:pointer;
+          ">skip for now</button>
+        </div>
+      </div>
+    `);
+
+    await new Promise(resolve => {
+      const inner      = el.querySelector('#ob-inner');
+      const input      = inner.querySelector('#ob-province-input');
+      const btn        = inner.querySelector('.ob-cta[data-action="confirm"]');
+      const skipBtn    = inner.querySelector('#ob-province-skip');
+      const statusEl   = inner.querySelector('#ob-province-status');
+
+      let resolveTimer  = null;
+      let lastValidated = '';
+      let resolvedCode  = null;
+      let resolvedName  = null;
+
+      input.focus();
+      input.addEventListener('focus', () => { input.style.borderBottomColor = 'var(--color-cream-60)'; });
+      input.addEventListener('blur',  () => { input.style.borderBottomColor = 'var(--color-cream-25)'; });
+
+      // Debounced AI resolution — fires 700ms after the user stops typing
+      input.addEventListener('input', () => {
+        const val = input.value.trim();
+
+        // Reset confirm state while user is typing
+        btn.disabled = true;
+        btn.style.borderColor = 'var(--color-cream-15)';
+        btn.style.color       = 'var(--color-cream-40)';
+        btn.style.cursor      = 'default';
+        resolvedCode = null;
+        resolvedName = null;
+
+        if (resolveTimer) clearTimeout(resolveTimer);
+
+        if (!val) {
+          statusEl.textContent = '';
+          lastValidated = '';
+          return;
+        }
+
+        statusEl.textContent = '···';
+
+        resolveTimer = setTimeout(async () => {
+          if (val !== input.value.trim()) return; // stale — user kept typing
+          if (val === lastValidated) return;       // already resolved this value
+          lastValidated = val;
+
+          try {
+            const result = await api.resolveProvince({ input: val, country: answers.country || 'CA' });
+
+            if (result.valid) {
+              resolvedCode = result.code;
+              resolvedName = result.name;
+              statusEl.textContent = result.name;
+              statusEl.style.color = 'var(--color-cream-60)';
+
+              // Enable confirm
+              btn.disabled = false;
+              btn.style.borderColor = 'var(--color-cream-40)';
+              btn.style.color       = 'var(--color-cream-90)';
+              btn.style.cursor      = 'pointer';
+            } else {
+              resolvedCode = null;
+              resolvedName = null;
+              statusEl.textContent = 'Not recognised — try the full name or abbreviation';
+              statusEl.style.color = 'rgba(240,235,218,0.3)';
+            }
+          } catch {
+            statusEl.textContent = '';
+          }
+        }, 700);
+      });
+
+      // Confirm — only fires if AI has resolved
+      btn.addEventListener('mouseenter', () => {
+        if (!btn.disabled) { btn.style.background = 'rgba(240,235,218,0.08)'; btn.style.borderColor = 'var(--color-cream-60)'; }
+      });
+      btn.addEventListener('mouseleave', () => {
+        if (!btn.disabled) { btn.style.background = 'transparent'; btn.style.borderColor = 'var(--color-cream-40)'; }
+      });
+      btn.addEventListener('click', () => {
+        if (btn.disabled || !resolvedCode) return;
+        answers.province      = resolvedCode;
+        answers.province_name = resolvedName;
+        resolve();
+      }, { once: true });
+
+      // Skip — show inline warning, then advance after brief pause
+      skipBtn.addEventListener('mouseenter', () => { skipBtn.style.color = 'var(--color-cream-40)'; });
+      skipBtn.addEventListener('mouseleave', () => { skipBtn.style.color = 'var(--color-cream-25)'; });
+      skipBtn.addEventListener('click', () => {
+        answers.province      = null;
+        answers.province_name = null;
+        skipBtn.style.display = 'none';
+        btn.style.display     = 'none';
+        statusEl.textContent  = skipWarning;
+        statusEl.style.color  = 'rgba(240,235,218,0.35)';
+        if (resolveTimer) clearTimeout(resolveTimer);
+        setTimeout(() => resolve(), 1800);
+      }, { once: true });
+    });
+
+    advance();
+  }
+
   async function renderSituation() {
     const s = smesc.situation;
     await setContent(tileCard({
@@ -183,7 +520,6 @@ export function createOnboarding(world) {
       multi: true,
       onConfirm: selected => {
         answers.mission = selected;
-        store.set('onboarding_mission', selected);
         advance();
       },
     });
@@ -332,6 +668,16 @@ export function createOnboarding(world) {
       </div>
     `);
     attachCtaListener(() => {
+      // Write user identity fields
+      store.set('user', {
+        name:          answers.name      || null,
+        pronouns:      answers.pronouns  || null,
+        country:       answers.country   || null,
+        province:      answers.province  || null,
+        province_name: answers.province_name || null,
+        joined:        new Date().toISOString().split('T')[0],
+      });
+
       store.set('onboarding', {
         complete: true,
         worldId: world.id,
@@ -452,6 +798,10 @@ export function createOnboarding(world) {
 
   const stepRenderers = {
     arrival:         renderArrival,
+    name:            renderName,
+    pronouns:        renderPronouns,
+    country:         renderCountry,
+    province:        renderProvince,
     situation:       renderSituation,
     mission:         renderMission,
     execution:       renderExecution,

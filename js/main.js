@@ -4,6 +4,7 @@ import { createGallery } from './gallery.js';
 import { createOnboarding } from './onboarding.js';
 import { createTeam } from './team.js';
 import { createHome } from './home.js';
+import { createLocationRequest } from './location.js';
 
 const app = document.getElementById('app');
 
@@ -371,11 +372,17 @@ async function showGallery(worlds) {
   const chosenWorld = await gallery.mount(app);
   store.set('world', chosenWorld.id);
   await gallery.unmount();
-  await showOnboarding(chosenWorld, worlds);
+
+  // Location request — fires after world selection so we have a voice
+  const locationReq = createLocationRequest(chosenWorld);
+  const { province_known } = await locationReq.mount(app);
+  await locationReq.unmount();
+
+  await showOnboarding(chosenWorld, worlds, { provinceKnown: province_known });
 }
 
-async function showOnboarding(world, worlds) {
-  const onboarding = createOnboarding(world, worlds);
+async function showOnboarding(world, worlds, { provinceKnown = false } = {}) {
+  const onboarding = createOnboarding(world, { provinceKnown });
 
   const result = await onboarding.mount(app, {
     onBack: async () => {
@@ -399,6 +406,24 @@ async function showHome(worlds) {
   const worldId = store.get('world');
   const world   = worlds.find(w => w.id === worldId);
   if (!world) return;
+
+  // Refresh current lat/lng each session — handles travel
+  // Runs silently in background, does not block home render
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const existing = store.get('user') || {};
+        // Only update lat/lng — never overwrite home_lat/home_lng from here
+        store.set('user', {
+          ...existing,
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+        });
+      },
+      () => { /* denied or unavailable — use stored values */ },
+      { timeout: 8000, maximumAge: 300000 } // 5-min cache — don't hammer GPS
+    );
+  }
 
   const home = createHome(world);
   home.mount(app);

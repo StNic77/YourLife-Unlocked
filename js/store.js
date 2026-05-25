@@ -18,6 +18,23 @@ const defaults = {
   },
   user: {
     name: null,
+    pronouns: null,        // 'he' | 'she' | 'they'
+    country: null,         // 'CA' | 'US' | 'UK' | 'other'
+
+    // Home base — stable, jurisdiction-aware
+    province: null,        // canonical code e.g. 'BC', 'TX'
+    province_name: null,   // full display name e.g. 'British Columbia'
+    home_city: null,
+    home_lat: null,
+    home_lng: null,
+
+    // Current position — refreshed each session
+    lat: null,
+    lng: null,
+
+    // Whether the home/away question has been answered
+    location_confirmed: false,
+
     joined: null,
   },
 };
