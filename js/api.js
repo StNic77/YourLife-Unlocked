@@ -243,8 +243,7 @@ Return JSON: { "city": "string", "province_code": "string", "province_name": "st
   // ---------------------------------------------------------------------------
   // resolveProvince — called during onboarding province step
   // Accepts free text (abbreviation, full name, partial, misspelled).
-  // Returns { code, name, valid } — code is the canonical abbreviation,
-  // name is the full display name, valid: false if it couldn't resolve.
+  // Returns { code, name, valid }
   // country: 'CA' | 'US' | 'UK' | 'other'
   // ---------------------------------------------------------------------------
 
@@ -267,6 +266,38 @@ Return JSON: { "code": "string", "name": "string", "valid": boolean }`,
     }];
 
     const raw = await this.send({ system, messages, maxTokens: 80, model: MODEL_FAST });
+    return safeParseJSON(raw);
+  },
+
+  // ---------------------------------------------------------------------------
+  // resolveCity — called during location correction flow
+  // User types a city name (free text, partial, casual).
+  // Returns { city, province_code, province_name, country_code, lat, lng, valid }
+  // country hint passed in from store if known — narrows resolution.
+  // ---------------------------------------------------------------------------
+
+  async resolveCity({ input, country }) {
+    const system = `You are a location resolver for a personal life app.
+Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
+The user has typed a city name — it may be partial, casual, or include a province hint.
+Resolve it to a canonical city name, province/state, country, and approximate coordinates.
+For Canada use 2-letter province codes (BC, AB, ON, etc.).
+For United States use 2-letter state codes (CA, TX, NY, etc.).
+For United Kingdom use ENG, SCO, WAL, NIR.
+country_code should be CA, US, UK, or the ISO 2-letter code.
+Be generous — "courtenay", "courtenay bc", "Courtenay British Columbia" all resolve to the same place.
+lat and lng should be the approximate centre of the city (not the user's exact position).
+If the input is empty or unresolvable, set valid to false.`;
+
+    const countryHint = country ? `Country hint: ${country}.` : '';
+
+    const messages = [{
+      role: 'user',
+      content: `${countryHint} User input: "${input}".
+Return JSON: { "city": "string", "province_code": "string", "province_name": "string", "country_code": "string", "lat": number, "lng": number, "valid": boolean }`,
+    }];
+
+    const raw = await this.send({ system, messages, maxTokens: 120, model: MODEL_FAST });
     return safeParseJSON(raw);
   },
 
