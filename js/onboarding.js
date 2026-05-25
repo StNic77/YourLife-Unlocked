@@ -327,7 +327,7 @@ export function createOnboarding(world, { provinceKnown = false } = {}) {
     const worldSkipWarning = {
       operator:  'Some features need your location to operate. You can add it later.',
       range:     'Some things work better when I know your territory. You can add it later.',
-      garden:    'I'll be able to tend things better once I know where you are. You can add it later.',
+      garden:    `I'll be able to tend things better once I know where you are. You can add it later.`,
       journey:   'Some features need your location to work fully. You can add it later.',
       playbook:  'Some plays need a home field. You can add it later.',
       summit:    'Some conditions depend on knowing your region. You can add it later.',
