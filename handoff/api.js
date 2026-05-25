@@ -80,26 +80,20 @@ export const api = {
   // no explanation, no prose. The AI is a database, not a performer.
   // ---------------------------------------------------------------------------
 
-  async getRegistrationCascade({ route, province, vehicle_name, vehicle_year, city, lat, lng }) {
+  async getRegistrationCascade({ route, province, vehicle_name, vehicle_year }) {
     const system = `You are a data retrieval service for a personal life app.
 Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
 You have accurate, jurisdiction-specific knowledge of vehicle registration
 and insurance requirements across Canadian provinces and US states.
 BC: registration and basic insurance are combined through ICBC Autoplan only.
 AB: standard registration through registry agents, private insurance market.
-For broker recommendations: return real businesses you have confident knowledge of
-for the given city. If you are not confident a business exists at that address,
-use null for address and phone — never fabricate specific details.
-Return 2-3 brokers ordered by likelihood of being closest to the user's location.`;
-
-    const locationContext = city ? `User location: ${city}, ${province}${lat ? ` (${lat}, ${lng})` : ''}.` : '';
+Never fabricate addresses or phone numbers — use null if unknown.`;
 
     const messages = [{
       role: 'user',
       content: `Vehicle: ${vehicle_name || 'unknown'}${vehicle_year ? `, ${vehicle_year}` : ''}.
 Province/state: ${province}.
 Route selected: ${route}.
-${locationContext}
 
 Return JSON with these fields (use null for unknown values):
 {
@@ -108,21 +102,18 @@ Return JSON with these fields (use null for unknown values):
   "estimated_cost": "string",
   "time_estimate": "string",
   "eligibility_note": "string or null",
-  "brokers": [
-    {
-      "name": "string",
-      "address": "string or null",
-      "phone": "string or null",
-      "hours": "string or null"
-    }
-  ],
-  "maps_search_query": "string",
+  "office_name": "string or null",
+  "office_address": "string or null",
+  "office_hours": "string or null",
+  "mail_address": "string or null",
+  "mail_include": ["string"] or null,
+  "processing_time": "string or null",
   "portal_url": "string or null",
   "instructions": "string or null"
 }`,
     }];
 
-    const raw  = await this.send({ system, messages, maxTokens: 900, model: MODEL_FAST });
+    const raw  = await this.send({ system, messages, maxTokens: 800, model: MODEL_FAST });
     return safeParseJSON(raw);
   },
 

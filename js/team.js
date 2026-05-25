@@ -238,17 +238,18 @@ export function createTeam(world) {
   // when the user confirms or escapes.
   // ---------------------------------------------------------------------------
 
-  // pronoun(p, form) — returns the correct pronoun for the partner.
+  // pronoun(entity, form) — returns the correct pronoun for any person object.
+  // entity: any object with a .pronoun property ('she' | 'he' | 'they' | null)
   // form: 'subjective' (she/he/they), 'objective' (her/him/them),
   //       'possessive' (her/his/their)
-  // Falls back to 'they/them/their' if pronoun not yet set.
-  function pronoun(p, form) {
+  // Falls back to 'they/them/their' if pronoun not set or skipped.
+  function pronoun(entity, form) {
     const map = {
       she:  { subjective: 'she',  objective: 'her',  possessive: 'her'   },
       he:   { subjective: 'he',   objective: 'him',  possessive: 'his'   },
       they: { subjective: 'they', objective: 'them', possessive: 'their' },
     };
-    return (map[p.pronoun] || map.they)[form];
+    return (map[entity.pronoun] || map.they)[form];
   }
 
   async function runPartnerCascade() {
@@ -481,6 +482,22 @@ export function createTeam(world) {
       const name = await awaitInput('team-input');
       if (name === null) return; // escaped
 
+      // --- PRONOUN (skippable — skip tile stores null) ---
+      await setContent(tileCard({
+        prompt: `How do you refer to ${name}?`,
+        tiles: [
+          { id: 'she',  label: 'She / her' },
+          { id: 'he',   label: 'He / him' },
+          { id: 'they', label: 'They / them' },
+          { id: 'skip', label: 'Skip' },
+        ],
+        multi: false,
+      }));
+
+      const childPronounRaw = await awaitTile({ multi: false });
+      if (childPronounRaw === null) return; // escaped entirely
+      const childPronoun = childPronounRaw === 'skip' ? null : childPronounRaw;
+
       await setContent(inputCard({
         prompt: `How old is ${name}?`,
         placeholder: 'Age',
@@ -499,7 +516,7 @@ export function createTeam(world) {
 
       const birthday = await awaitInput('team-input'); // null if skipped — that's fine
 
-      teamData.children.push({ name, age, birthday: birthday || null });
+      teamData.children.push({ name, pronoun: childPronoun, age, birthday: birthday || null });
       childIndex++;
 
       // After each child — offer to add another or continue

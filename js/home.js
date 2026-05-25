@@ -1,5 +1,6 @@
 import { store } from './store.js';
 import { transitions } from './transitions.js';
+import { createCascade } from './cascade.js';
 
 // ---------------------------------------------------------------------------
 // DEV MODE — Hotspot visualiser
@@ -18,7 +19,7 @@ const DEV_HOTSPOTS = new URLSearchParams(window.location.search).get('dev') === 
 // Two modes:
 //   GRAB AND GO — tap any object, a focused brief fills the screen.
 //                 Fast, data-only, dismissable. One domain, what you need.
-//   DEPTH       — tap the primary object (ATAC / world equivalent).
+//   DEPTH       — tap the primary object (ATAK / world equivalent).
 //                 Full brief, cascades, urgent items, the session.
 //
 // Urgent items attach to their relevant object. The object signals urgency
@@ -35,15 +36,15 @@ const DEV_HOTSPOTS = new URLSearchParams(window.location.search).get('dev') === 
 // r: tap radius in px (before scaling — used as visual indicator size)
 // id: domain key used throughout the app
 // urgent: whether this object can carry an urgent indicator
-// primary: the depth object — opens the full ATAC/equivalent experience
+// primary: the depth object — opens the full ATAK/equivalent experience
 // ---------------------------------------------------------------------------
 
 const HOTSPOT_MAPS = {
   operator: [
     {
-      id: 'atac',
+      id: 'atak',
       label: 'Brief',
-      x: 48, y: 46,   // ATAC on dock — centre of device
+      x: 48, y: 46,   // ATAK on dock — centre of device
       r: 44,
       primary: true,
       urgent: true,
@@ -61,7 +62,7 @@ const HOTSPOT_MAPS = {
     {
       id: 'keys',
       label: 'Vehicles',
-      x: 65, y: 45,   // Keys — right of ATAC
+      x: 65, y: 45,   // Keys — right of ATAK
       r: 36,
       primary: false,
       urgent: true,
@@ -159,35 +160,43 @@ const HOTSPOT_MAPS = {
 // ---------------------------------------------------------------------------
 
 function getUrgentItems() {
-  // Pull from store when real data exists.
-  // Stub for day-one build:
-  const team = store.get('team') || {};
-  const items = [];
+  const team   = store.get('team') || {};
+  const stored = store.get('urgent_items') || [];
+  const active = stored.filter(i => !isSnoozed(i));
 
-  // If a partner has a birthday on file within 14 days — flag it
+  // Index stored ids so derived items don't duplicate what's already there
+  const storedIds = new Set(active.map(i => i.id));
+  const derived   = [];
+
+  // Partner birthday — derived from team data, skip if already in store
   if (team?.partner?.birthday) {
-    const daysUntil = daysUntilDate(team.partner.birthday);
-    if (daysUntil !== null && daysUntil <= 14 && daysUntil >= 0) {
-      items.push({
-        id: 'partner_birthday',
-        object: 'calendar',
-        domain: 'calendar',
-        title: `${team.partner.name || 'Partner'}'s birthday`,
-        body: daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil} days`,
-        snoozable: true,
-        snoozed_until: null,
-      });
+    const id = 'partner_birthday';
+    if (!storedIds.has(id)) {
+      const daysUntil = daysUntilDate(team.partner.birthday);
+      if (daysUntil !== null && daysUntil <= 14 && daysUntil >= 0) {
+        derived.push({
+          id,
+          object: 'calendar',
+          domain: 'calendar',
+          title: `${team.partner.name || 'Partner'}'s birthday`,
+          body: daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil} days`,
+          snoozable: true,
+          snoozed_until: null,
+        });
+      }
     }
   }
 
-  // Children's birthdays within 14 days — same pattern as partner
+  // Children birthdays — derived, skip any already in store
   if (Array.isArray(team?.children)) {
     team.children.forEach(child => {
       if (!child.birthday) return;
+      const id = `child_birthday_${child.name}`;
+      if (storedIds.has(id)) return;
       const daysUntil = daysUntilDate(child.birthday);
       if (daysUntil !== null && daysUntil <= 14 && daysUntil >= 0) {
-        items.push({
-          id: `child_birthday_${child.name}`,
+        derived.push({
+          id,
           object: 'calendar',
           domain: 'calendar',
           title: `${child.name}'s birthday`,
@@ -199,9 +208,8 @@ function getUrgentItems() {
     });
   }
 
-  // Check store for any saved urgent items
-  const stored = store.get('urgent_items') || [];
-  return [...items, ...stored.filter(i => !isSnoozed(i))];
+  // Stored items first (user-facing priority), then derived
+  return [...active, ...derived];
 }
 
 function daysUntilDate(dateStr) {
@@ -359,52 +367,126 @@ function buildPrimaryBrief(team, onboard, world) {
   const sections = [];
   const urgent   = getUrgentItems();
 
-  // Urgent — always first if present
+  // ── Needs attention — urgent items only, no duplication ───────────────────
   if (urgent.length) {
     sections.push({
       heading: 'Needs attention',
       items: urgent.map(i => ({
-        label: i.title,
-        value: i.body,
-        urgent: true,
-        item_id: i.id,
-        snoozable: i.snoozable,
+        label:        i.title,
+        value:        i.body,
+        urgent:       true,
+        item_id:      i.id,
+        snoozable:    i.snoozable,
+        cascade_type: i.cascade?.type || null,
       })),
     });
   }
 
-  // Team — who's in the picture today
-  const teamLines = [];
-  if (team?.partner?.name) teamLines.push(team.partner.name);
-  if (team?.children?.length) {
-    teamLines.push(
-      team.children.length === 1
-        ? team.children[0].name
-        : `${team.children.length} kids`
-    );
+  // ── Your team — names + what's relevant about each person right now ───────
+  const teamItems = [];
+
+  if (team?.partner?.name) {
+    // Look for partner's birthday in urgent items — if found, surface it here
+    const partnerBday = urgent.find(i => i.id === 'partner_birthday');
+    teamItems.push({
+      label: team.partner.name,
+      value: partnerBday
+        ? `Birthday ${partnerBday.body.toLowerCase()}`
+        : team.partner.love_language
+          ? `Love language: ${loveLangLabel(team.partner.love_language)}`
+          : '',
+      urgent: !!partnerBday,
+    });
   }
-  sections.push({
-    heading: 'Your team',
-    items: teamLines.length ? teamLines.map(t => ({
-      label: t, value: '', urgent: false,
-    })) : [{
-      label: 'Just you for now',
-      value: '',
-      urgent: false,
-    }],
+
+  if (Array.isArray(team?.children) && team.children.length) {
+    team.children.forEach(child => {
+      const childBday = urgent.find(i => i.id === `child_birthday_${child.name}`);
+      teamItems.push({
+        label: child.name,
+        value: childBday
+          ? `Birthday ${childBday.body.toLowerCase()}`
+          : child.age ? `${child.age} years old` : '',
+        urgent: !!childBday,
+      });
+    });
+  }
+
+  if (teamItems.length) {
+    sections.push({
+      heading: 'Your team',
+      items: teamItems,
+    });
+  } else {
+    sections.push({
+      heading: 'Your team',
+      items: [{ label: 'Just you for now', value: '', urgent: false }],
+    });
+  }
+
+  // ── On the horizon — temporal clustering across all domains ───────────────
+  // Surface upcoming items that aren't yet urgent but are worth knowing.
+  // This is where the ATAK shows synthesis: things no single grab-and-go sees.
+  const horizonItems = [];
+
+  // Vehicles coming due in the next 30 days (but not already urgent / <14 days)
+  const vehicles = store.get('vehicles') || [];
+  vehicles.forEach(v => {
+    const checks = [
+      { field: v.registration_expiry, label: `${v.name || 'Vehicle'} — Reg` },
+      { field: v.insurance_expiry,    label: `${v.name || 'Vehicle'} — Insurance` },
+      { field: v.service_due,         label: `${v.name || 'Vehicle'} — Service` },
+    ];
+    checks.forEach(({ field, label }) => {
+      if (!field) return;
+      const days = Math.ceil((new Date(field) - new Date()) / (1000 * 60 * 60 * 24));
+      if (days > 14 && days <= 30) {
+        horizonItems.push({
+          label,
+          value: `${days} days`,
+          urgent: false,
+        });
+      }
+    });
   });
 
-  // Horizon — upcoming dates
+  // Children birthdays 15–30 days out
+  if (Array.isArray(team?.children)) {
+    team.children.forEach(child => {
+      if (!child.birthday) return;
+      const days = daysUntilDate(child.birthday);
+      if (days !== null && days > 14 && days <= 30) {
+        horizonItems.push({
+          label: `${child.name}'s birthday`,
+          value: `${days} days`,
+          urgent: false,
+        });
+      }
+    });
+  }
+
+  // Partner birthday 15–30 days out
+  if (team?.partner?.birthday) {
+    const days = daysUntilDate(team.partner.birthday);
+    if (days !== null && days > 14 && days <= 30) {
+      horizonItems.push({
+        label: `${team.partner.name || 'Partner'}'s birthday`,
+        value: `${days} days`,
+        urgent: false,
+      });
+    }
+  }
+
   sections.push({
     heading: 'On the horizon',
-    items: [{
-      label: 'Nothing scheduled yet',
-      value: 'Add dates and I\'ll brief you when it matters',
+    items: horizonItems.length ? horizonItems : [{
+      label: 'Nothing in the next 30 days',
+      value: 'Add dates and I\'ll keep watch',
       urgent: false,
     }],
   });
 
-  // Mission gaps — what they flagged in onboarding
+  // ── In focus — mission items from onboarding ───────────────────────────────
   if (onboard?.mission?.length) {
     sections.push({
       heading: 'In focus',
@@ -421,6 +503,17 @@ function buildPrimaryBrief(team, onboard, world) {
     sections,
     is_primary: true,
   };
+}
+
+function loveLangLabel(id) {
+  const map = {
+    words_of_affirmation: 'Words of affirmation',
+    acts_of_service:      'Acts of service',
+    receiving_gifts:      'Receiving gifts',
+    quality_time:         'Quality time',
+    physical_touch:       'Physical touch',
+  };
+  return map[id] || id;
 }
 
 function missionLabel(id) {
@@ -882,6 +975,8 @@ export function createHome(world) {
       ? 'border-left:2px solid rgba(210,160,60,0.7);padding-left:12px;'
       : 'border-left:2px solid rgba(240,235,218,0.08);padding-left:12px;';
 
+    const hasCascade = !!(item.cascade_type && item.item_id);
+
     const snoozeBtn = (item.urgent && item.snoozable && item.item_id) ? `
       <button class="snooze-btn" data-id="${item.item_id}" style="
         font-family:var(--font-sans);font-weight:200;
@@ -893,7 +988,7 @@ export function createHome(world) {
       ">snooze</button>
     ` : '';
 
-    const dismissBtn = (item.urgent && item.item_id) ? `
+    const dismissBtn = (item.urgent && item.item_id && !hasCascade) ? `
       <button class="dismiss-btn" data-id="${item.item_id}" style="
         font-family:var(--font-sans);font-weight:200;
         font-size:9px;letter-spacing:0.2em;text-transform:uppercase;
@@ -904,6 +999,26 @@ export function createHome(world) {
       ">done</button>
     ` : '';
 
+    // Cascade affordance — replaces dismiss, label becomes tappable
+    const cascadeBtn = hasCascade ? `
+      <button class="cascade-open-btn" data-id="${item.item_id}" style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:9px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(210,160,60,0.6);
+        padding:4px 8px;
+        border:0.5px solid rgba(210,160,60,0.25);border-radius:1px;
+        transition:all 0.2s ease;white-space:nowrap;
+      ">handle →</button>
+    ` : '';
+
+    const labelStyle = hasCascade
+      ? `cursor:pointer;transition:color 0.15s ease;`
+      : '';
+
+    const labelAttrs = hasCascade
+      ? `class="cascade-label" data-id="${item.item_id}"`
+      : '';
+
     return `
       <div style="
         padding:14px 0;
@@ -911,11 +1026,12 @@ export function createHome(world) {
         display:flex;align-items:center;gap:12px;
       ">
         <div style="flex:1;${urgentAccent}">
-          <div style="
+          <div ${labelAttrs} style="
             font-family:var(--font-sans);font-weight:300;
             font-size:13px;letter-spacing:0.04em;
             color:${item.urgent ? 'rgba(240,235,218,0.9)' : 'rgba(240,235,218,0.65)'};
             margin-bottom:${item.value ? '4px' : '0'};
+            ${labelStyle}
           ">${item.label}</div>
           ${item.value ? `<div style="
             font-family:var(--font-sans);font-weight:200;
@@ -925,6 +1041,7 @@ export function createHome(world) {
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;">
           ${snoozeBtn}
+          ${cascadeBtn}
           ${dismissBtn}
         </div>
       </div>
@@ -972,6 +1089,36 @@ export function createHome(world) {
         dismissItem(btn.dataset.id);
         closeBrief();
       });
+    });
+
+    // Cascade — "handle →" button or tappable label opens cascade panel
+    const openCascade = (itemId) => {
+      const allItems = getUrgentItems();
+      const item     = allItems.find(i => i.id === itemId);
+      if (!item?.cascade) return;
+
+      const cascadePanel = createCascade({
+        item,
+        onBack: () => {
+          // Brief stays open — cascade slides away
+        },
+        onComplete: () => {
+          // Dismiss the item and refresh the brief
+          dismissItem(itemId);
+          closeBrief();
+        },
+      });
+      if (cascadePanel) cascadePanel.open(el);
+    };
+
+    panel.querySelectorAll('.cascade-open-btn').forEach(btn => {
+      btn.addEventListener('click', () => openCascade(btn.dataset.id));
+    });
+
+    panel.querySelectorAll('.cascade-label').forEach(label => {
+      label.addEventListener('click',      () => openCascade(label.dataset.id));
+      label.addEventListener('mouseenter', () => label.style.color = 'rgba(210,160,60,0.9)');
+      label.addEventListener('mouseleave', () => label.style.color = 'rgba(240,235,218,0.9)');
     });
 
     // CTA buttons — stubbed, wired in future sessions
