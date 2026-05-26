@@ -230,6 +230,346 @@ export function createCascade({ item, onBack, onComplete }) {
       changeBtn.addEventListener('click', () => render(null));
     }
 
+    // Person detail — tap-to-edit
+    if (cascade.type === 'person_detail') {
+      el.querySelectorAll('.person-editable-line').forEach(row => {
+        row.addEventListener('click', () => {
+          if (row.querySelector('input')) return;
+          const personId  = row.dataset.personId;
+          const field     = row.dataset.field;
+          const valueDiv  = row.querySelector('.person-editable-value');
+          const current   = valueDiv?.innerText?.replace(/[—]/g, '').trim() || '';
+
+          const input = document.createElement('input');
+          input.type  = 'text';
+          input.value = current;
+          input.style.cssText = `
+            width:100%;box-sizing:border-box;
+            background:rgba(240,235,218,0.06);
+            border:none;border-bottom:0.5px solid rgba(210,160,60,0.4);
+            padding:4px 2px;
+            font-family:var(--font-sans);font-weight:300;
+            font-size:13px;letter-spacing:0.03em;
+            color:rgba(240,235,218,0.88);outline:none;
+          `;
+          if (valueDiv) valueDiv.replaceWith(input);
+          input.focus();
+          const save = () => { savePersonField(personId, field, input.value.trim()); render('detail'); };
+          input.addEventListener('blur',    save);
+          input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+        });
+        row.addEventListener('mouseenter', () => row.style.background = 'rgba(240,235,218,0.02)');
+        row.addEventListener('mouseleave', () => row.style.background = 'transparent');
+      });
+      return;
+    }
+
+    // Maintenance detail — tap-to-edit + mark done + delete
+    if (cascade.type === 'maintenance_detail') {
+      el.querySelectorAll('.task-editable-line').forEach(row => {
+        row.addEventListener('click', () => {
+          if (row.querySelector('input')) return;
+          const taskId   = row.dataset.taskId;
+          const field    = row.dataset.field;
+          const type     = row.dataset.type;
+          const valueDiv = row.querySelector('.task-editable-value');
+          const current  = valueDiv?.innerText?.replace(/[—]/g, '').trim() || '';
+
+          const input = document.createElement('input');
+          input.type  = type === 'date' ? 'date' : 'text';
+          if (type === 'date' && current) {
+            const d = new Date(current);
+            if (!isNaN(d)) input.value = d.toISOString().split('T')[0];
+          } else {
+            input.value = current;
+          }
+          input.style.cssText = `
+            width:100%;box-sizing:border-box;
+            background:rgba(240,235,218,0.06);
+            border:none;border-bottom:0.5px solid rgba(210,160,60,0.4);
+            padding:4px 2px;
+            font-family:var(--font-sans);font-weight:300;
+            font-size:13px;color:rgba(240,235,218,0.88);
+            outline:none;color-scheme:dark;
+          `;
+          if (valueDiv) valueDiv.replaceWith(input);
+          input.focus();
+          const save = () => { saveTaskField(taskId, field, input.value.trim()); render('detail'); };
+          input.addEventListener('blur',    save);
+          input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+        });
+        row.addEventListener('mouseenter', () => row.style.background = 'rgba(240,235,218,0.02)');
+        row.addEventListener('mouseleave', () => row.style.background = 'transparent');
+      });
+
+      // Mark done
+      el.querySelectorAll('.cascade-done').forEach(btn => {
+        btn.addEventListener('click', () => {
+          maintenanceDetailRenderer.complete = maintenanceTaskRenderer.complete;
+          maintenanceTaskRenderer.complete(cascade.context, 'detail', {});
+          close(); onComplete?.();
+        });
+      });
+
+      // Delete task
+      const delBtn = el.querySelector('#task-delete');
+      if (delBtn) {
+        delBtn.addEventListener('click', () => {
+          const tasks = store.get('maintenance_tasks') || [];
+          store.set('maintenance_tasks', tasks.filter(t => t.id !== delBtn.dataset.taskId));
+          close(); onComplete?.();
+        });
+      }
+      return;
+    }
+
+    // Maintenance intake listeners
+    if (cascade.type === 'maintenance_intake') {
+      const s = cascade.context._mState || (cascade.context._mState = { step: 'label' });
+
+      const proceedBtn = el.querySelector('#m-proceed');
+      if (proceedBtn) {
+        proceedBtn.addEventListener('click', () => {
+          if (s.step === 'label') {
+            s.label = el.querySelector('#m-label')?.value.trim() || '';
+            s.notes = el.querySelector('#m-notes')?.value.trim() || '';
+            if (!s.label) return;
+            s.step = 'interval';
+            render('intake');
+          } else if (s.step === 'interval') {
+            s.interval_days  = el.querySelector('#m-interval-days')?.value.trim()  || s.interval_days  || '';
+            s.interval_label = el.querySelector('#m-interval-label')?.value.trim() || s.interval_label || '';
+            s.step = 'last_done';
+            render('intake');
+          } else if (s.step === 'last_done') {
+            s.last_done = el.querySelector('#m-last-done')?.value.trim() || '';
+            maintenanceIntakeRenderer.complete(cascade.context, 'intake', {});
+            close();
+            onComplete?.();
+          }
+        });
+      }
+
+      const skipBtn = el.querySelector('#m-skip');
+      if (skipBtn) {
+        skipBtn.addEventListener('click', () => {
+          if (s.step === 'interval') { s.step = 'last_done'; render('intake'); }
+          else if (s.step === 'last_done') {
+            maintenanceIntakeRenderer.complete(cascade.context, 'intake', {});
+            close(); onComplete?.();
+          }
+        });
+      }
+
+      // Interval presets
+      el.querySelectorAll('.m-preset').forEach(btn => {
+        btn.addEventListener('click', () => {
+          s.interval_days  = btn.dataset.days;
+          s.interval_label = btn.dataset.label;
+          s.step = 'last_done';
+          render('intake');
+        });
+      });
+
+      return;
+    }
+
+    // Intake cascade — delegate to intake listener handler
+    if (cascade.type === 'vehicle_intake') {
+      attachIntakeListeners(el, cascade, render, close, onComplete);
+      return;
+    }
+
+    // Detail cascade — log a service button
+    if (cascade.type === 'vehicle_detail') {
+      // Log a service button
+      el.querySelectorAll('.vehicle-log-service').forEach(btn => {
+        btn.addEventListener('click', () => {
+          cascade.context._logMode = true;
+          render('log_service');
+        });
+      });
+
+      // Log service save/cancel
+      if (cascade.context._logMode) {
+        const saveBtn = el.querySelector('#log-service-save');
+        if (saveBtn) {
+          saveBtn.addEventListener('click', () => {
+            const dateVal    = el.querySelector('#log-date')?.value.trim()    || new Date().toISOString().split('T')[0];
+            const mileageVal = el.querySelector('#log-mileage')?.value.trim() || '';
+            const typeVal    = el.querySelector('#log-type')?.value.trim()    || 'oil_change';
+            const shopVal    = el.querySelector('#log-shop')?.value.trim()    || '';
+            const notesVal   = el.querySelector('#log-notes')?.value.trim()   || '';
+            const vehicles   = store.get('vehicles') || [];
+            const idx        = vehicles.findIndex(v => v.id === cascade.context.vehicle_id);
+            if (idx >= 0) {
+              vehicles[idx].service_history = vehicles[idx].service_history || [];
+              vehicles[idx].service_history.push({
+                type: typeVal, date: dateVal,
+                mileage: mileageVal ? parseInt(mileageVal, 10) : null,
+                shop: shopVal || vehicles[idx].preferred_shop || null,
+                notes: notesVal || null,
+              });
+              if (mileageVal && parseInt(mileageVal, 10) > (vehicles[idx].mileage_at_entry || 0)) {
+                vehicles[idx].mileage_at_entry = parseInt(mileageVal, 10);
+                vehicles[idx].mileage_date = dateVal;
+              }
+              store.set('vehicles', vehicles);
+            }
+            cascade.context._logMode = false;
+            render('detail');
+          });
+        }
+        const cancelBtn = el.querySelector('#log-service-cancel');
+        if (cancelBtn) cancelBtn.addEventListener('click', () => { cascade.context._logMode = false; render('detail'); });
+      }
+
+      // ── Tap-to-edit: flat fields ──────────────────────────────────────────
+      // Each .editable-line taps to swap the value div for an input.
+      // On blur or Enter: write to store, swap back.
+      el.querySelectorAll('.editable-line').forEach(row => {
+        row.addEventListener('click', () => {
+          if (row.querySelector('input')) return; // already editing
+          const field     = row.dataset.field;
+          const type      = row.dataset.type;
+          const vehicleId = row.dataset.vehicleId;
+          const valueDiv  = row.querySelector('.editable-value');
+          const currentText = valueDiv?.innerText?.replace(/[—]/g, '').trim() || '';
+
+          const input = document.createElement('input');
+          input.type  = type === 'date' ? 'date' : 'text';
+          if (type === 'date' && currentText) {
+            // Try to parse display date back to ISO
+            const d = new Date(currentText);
+            if (!isNaN(d)) input.value = d.toISOString().split('T')[0];
+          } else {
+            // Strip trailing ' km' or similar for numeric fields
+            input.value = currentText.replace(/[\s,km]+$/i, '').replace(/,/g, '');
+          }
+          input.style.cssText = `
+            width:100%;box-sizing:border-box;
+            background:rgba(240,235,218,0.06);
+            border:none;border-bottom:0.5px solid rgba(210,160,60,0.4);
+            padding:4px 2px;
+            font-family:var(--font-sans);font-weight:300;
+            font-size:13px;letter-spacing:0.03em;
+            color:rgba(240,235,218,0.88);
+            outline:none;
+            color-scheme:dark;
+          `;
+
+          if (valueDiv) valueDiv.replaceWith(input);
+          input.focus();
+
+          const save = () => {
+            const newVal = input.value.trim();
+            saveVehicleField(vehicleId, field, newVal);
+            render('detail');
+          };
+          input.addEventListener('blur',    save);
+          input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+        });
+
+        // Subtle edit affordance on hover
+        row.addEventListener('mouseenter', () => row.style.background = 'rgba(240,235,218,0.02)');
+        row.addEventListener('mouseleave', () => row.style.background = 'transparent');
+      });
+
+      // ── Tap-to-edit: history rows ─────────────────────────────────────────
+      // Each .editable-history-row taps to show inline mini-form for that entry.
+      el.querySelectorAll('.editable-history-row').forEach(row => {
+        const summary  = row.querySelector('.history-summary');
+        const form     = row.querySelector('.history-edit-form');
+        if (!summary || !form) return;
+
+        row.addEventListener('click', () => {
+          if (form.style.display !== 'none') return;
+          const vehicleId  = row.dataset.vehicleId;
+          const collection = row.dataset.collection;
+          const index      = parseInt(row.dataset.index, 10);
+          const vehicles   = store.get('vehicles') || [];
+          const vIdx       = vehicles.findIndex(v => v.id === vehicleId);
+          if (vIdx < 0) return;
+          const entry = vehicles[vIdx][collection]?.[index] || {};
+
+          form.innerHTML = `
+            <div style="display:flex;flex-direction:column;gap:8px;padding:8px 0 4px;">
+              <input class="h-type"  placeholder="type"     value="\${entry.type  || entry.label || ''}"
+                style="\${editInputStyle()}" />
+              <input class="h-date"  placeholder="date"     value="\${entry.date  || ''}"
+                type="date" style="\${editInputStyle()} color-scheme:dark;" />
+              <input class="h-km"    placeholder="km"       value="\${entry.mileage || entry.mileage_approx || ''}"
+                inputmode="numeric"  style="\${editInputStyle()}" />
+              <input class="h-shop"  placeholder="shop"     value="\${entry.shop  || ''}"
+                style="\${editInputStyle()}" />
+              <input class="h-notes" placeholder="notes"    value="\${entry.notes || ''}"
+                style="\${editInputStyle()}" />
+              <div style="display:flex;gap:12px;margin-top:4px;">
+                <button class="h-save" style="
+                  font-family:var(--font-sans);font-weight:300;
+                  font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+                  color:rgba(240,235,218,0.7);
+                  border:0.5px solid rgba(240,235,218,0.2);border-radius:2px;
+                  padding:6px 14px;cursor:pointer;
+                  background:rgba(240,235,218,0.05);
+                ">save</button>
+                <button class="h-delete" style="
+                  font-family:var(--font-sans);font-weight:200;
+                  font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+                  color:rgba(240,235,218,0.2);cursor:pointer;
+                ">remove</button>
+                <button class="h-cancel" style="
+                  font-family:var(--font-sans);font-weight:200;
+                  font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+                  color:rgba(240,235,218,0.2);cursor:pointer;
+                ">cancel</button>
+              </div>
+            </div>
+          `;
+          summary.style.display = 'none';
+          form.style.display    = 'block';
+
+          form.querySelector('.h-save').addEventListener('click', () => {
+            const updated = {
+              type:    form.querySelector('.h-type').value.trim()  || entry.type  || entry.label,
+              date:    form.querySelector('.h-date').value.trim()  || entry.date,
+              mileage: parseInt(form.querySelector('.h-km').value.trim(), 10) || entry.mileage || entry.mileage_approx || null,
+              shop:    form.querySelector('.h-shop').value.trim()  || entry.shop  || null,
+              notes:   form.querySelector('.h-notes').value.trim() || entry.notes || null,
+              label:   form.querySelector('.h-type').value.trim()  || entry.label || null,
+            };
+            const fresh = store.get('vehicles') || [];
+            const fi    = fresh.findIndex(v => v.id === vehicleId);
+            if (fi >= 0 && fresh[fi][collection]) {
+              fresh[fi][collection][index] = updated;
+              store.set('vehicles', fresh);
+            }
+            render('detail');
+          });
+
+          form.querySelector('.h-delete').addEventListener('click', () => {
+            const fresh = store.get('vehicles') || [];
+            const fi    = fresh.findIndex(v => v.id === vehicleId);
+            if (fi >= 0 && fresh[fi][collection]) {
+              fresh[fi][collection].splice(index, 1);
+              store.set('vehicles', fresh);
+            }
+            render('detail');
+          });
+
+          form.querySelector('.h-cancel').addEventListener('click', () => {
+            form.style.display    = 'none';
+            summary.style.display = 'block';
+          });
+        });
+
+        row.addEventListener('mouseenter', () => row.style.background = 'rgba(240,235,218,0.02)');
+        row.addEventListener('mouseleave', () => row.style.background = 'transparent');
+      });
+
+      return;
+    }
+
     // Done buttons
     el.querySelectorAll('.cascade-done').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -847,6 +1187,1599 @@ function buildMedicalRouteHTML(route, data, context) {
 }
 
 // ---------------------------------------------------------------------------
+// VEHICLE INTAKE — New vehicle entry cascade
+//
+// Triggered by the "Add a vehicle" CTA in the vehicles grab and go.
+// Minimum viable entry: year, make, model, approximate mileage.
+// Everything else is asked once, progressively, or inferred from the
+// Mazda/Toyota/etc maintenance schedule via AI.
+//
+// Steps:
+//   step_identity   — year, make, model (required)
+//   step_mileage    — current odometer (required — everything else derives)
+//   step_service    — last oil change date + mileage, preferred interval
+//   step_history    — known recent work (optional — skip gracefully)
+//   step_details    — plate province, preferred shop, VIN (all optional)
+//   step_review     — summary before writing to store
+//
+// The AI contract fires once after step_mileage:
+//   given year/make/model + mileage → return maintenance timeline,
+//   scheduled items due now or soon, and next service windows.
+//
+// Store shape written on completion:
+// {
+//   id: 'v_<timestamp>',
+//   name: '2015 Mazda3 Sport',
+//   year, make, model, variant,
+//   mileage_at_entry: 267000,
+//   mileage_date: '2026-05-25',
+//   plate_province: 'BC',
+//   preferred_shop: 'Mr. Lube',
+//   preferred_interval_km: 8000,
+//   vin: null,
+//   transmission: 'manual',
+//   service_history: [
+//     { date, mileage, type, shop, notes }
+//   ],
+//   maintenance_schedule: { ... },  // AI-generated
+//   service_due: '<next_oil_date>',
+//   registration_expiry: null,       // asked separately or from ICBC
+//   insurance_expiry: null,
+// }
+// ---------------------------------------------------------------------------
+
+// Internal state for the multi-step intake flow.
+// Lives only for the duration of one cascade open — reset on each open.
+function createIntakeState() {
+  return {
+    step: 'step_identity',
+    year: '', make: '', model: '', variant: '',
+    mileage: '',
+    last_oil_date: '', last_oil_mileage: '',
+    interval_km: '',
+    history: [],         // [{ type, date, mileage, notes }]
+    transmission: '',
+    plate_province: store.get('user')?.province || '',
+    preferred_shop: '',
+    vin: '',
+    ai_schedule: null,   // populated after step_mileage AI call
+  };
+}
+
+const vehicleIntakeRenderer = {
+
+  // resolve() is called once on open — returns the intake step UI
+  // For intake, there's no "route" concept — we always start at step_identity.
+  async resolve(context, _preference) {
+    return { routes: [], route: 'intake' };
+  },
+
+  async buildRoute(_route, context) {
+    // context carries intakeState when re-rendering steps
+    const state = context._intakeState || createIntakeState();
+    context._intakeState = state;
+    return buildIntakeStep(state, context);
+  },
+
+  complete(context, _route, _update) {
+    const state = context._intakeState;
+    if (!state) return;
+
+    const vehicles = store.get('vehicles') || [];
+    const id = `v_${Date.now()}`;
+
+    const newVehicle = {
+      id,
+      name: [state.year, state.make, state.model, state.variant].filter(Boolean).join(' '),
+      year:  state.year,
+      make:  state.make,
+      model: state.model,
+      variant: state.variant || null,
+      mileage_at_entry: parseInt(state.mileage, 10) || null,
+      mileage_date: new Date().toISOString().split('T')[0],
+      plate_province: state.plate_province || store.get('user')?.province || null,
+      preferred_shop: state.preferred_shop || null,
+      preferred_interval_km: parseInt(state.interval_km, 10) || 8000,
+      vin: state.vin || null,
+      transmission: state.transmission || null,
+      service_history: state.history || [],
+      maintenance_schedule: state.ai_schedule ? { ...state.ai_schedule, vehicle_facts: undefined } : null,
+      vehicle_facts: state.ai_schedule?.vehicle_facts || null,
+      service_due: state.ai_schedule?.next_oil_change_date || null,
+      registration_expiry: null,
+      insurance_expiry: null,
+    };
+
+    vehicles.push(newVehicle);
+    store.set('vehicles', vehicles);
+    logCascadeComplete('vehicle_intake', id, 'complete');
+  },
+};
+
+// ---------------------------------------------------------------------------
+// INTAKE STEP BUILDERS
+// Each step renders its own form. On confirm, advances state and re-renders.
+// ---------------------------------------------------------------------------
+
+function buildIntakeStep(state, context) {
+  switch (state.step) {
+    case 'step_identity': return buildIdentityStep(state, context);
+    case 'step_mileage':  return buildMileageStep(state, context);
+    case 'step_service':  return buildServiceStep(state, context);
+    case 'step_history':  return buildHistoryStep(state, context);
+    case 'step_details':  return buildDetailsStep(state, context);
+    case 'step_review':   return buildReviewStep(state, context);
+    default:              return buildIdentityStep(state, context);
+  }
+}
+
+// Shared step wrapper — progress indicator + content
+function buildStepWrapper(stepNum, totalSteps, content) {
+  const pct = Math.round((stepNum / totalSteps) * 100);
+  return `
+    <div>
+      <!-- Progress bar -->
+      <div style="
+        height:1px;background:rgba(240,235,218,0.06);
+        margin-bottom:28px;position:relative;
+      ">
+        <div style="
+          position:absolute;top:0;left:0;height:100%;
+          width:${pct}%;
+          background:rgba(210,160,60,0.5);
+          transition:width 0.4s ease;
+        "></div>
+      </div>
+      ${content}
+    </div>
+  `;
+}
+
+function buildIntakeInput(id, label, placeholder, value = '', opts = {}) {
+  return `
+    <div style="margin-bottom:20px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.3);margin-bottom:8px;
+      ">${label}${opts.optional ? ' <span style="color:rgba(240,235,218,0.15);">— optional</span>' : ''}</div>
+      <input
+        id="${id}"
+        type="${opts.type || 'text'}"
+        inputmode="${opts.inputmode || 'text'}"
+        placeholder="${placeholder}"
+        value="${value}"
+        style="
+          width:100%;box-sizing:border-box;
+          background:rgba(240,235,218,0.04);
+          border:0.5px solid rgba(240,235,218,0.12);
+          border-radius:2px;
+          padding:14px 16px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:15px;letter-spacing:0.02em;
+          color:rgba(240,235,218,0.88);
+          outline:none;
+          -webkit-appearance:none;
+        "
+        onfocus="this.style.borderColor='rgba(240,235,218,0.3)'"
+        onblur="this.style.borderColor='rgba(240,235,218,0.12)'"
+      />
+    </div>
+  `;
+}
+
+function buildIntakeProceedButton(label = 'Continue') {
+  return `
+    <button id="intake-proceed" style="
+      margin-top:8px;
+      display:inline-flex;align-items:center;
+      padding:14px 28px;
+      background:rgba(240,235,218,0.08);
+      border:0.5px solid rgba(240,235,218,0.3);
+      border-radius:2px;
+      font-family:var(--font-sans);font-weight:300;
+      font-size:11px;letter-spacing:0.22em;text-transform:uppercase;
+      color:rgba(240,235,218,0.85);
+      cursor:pointer;
+      transition:all 0.2s ease;
+    "
+    onmouseenter="this.style.background='rgba(240,235,218,0.13)'"
+    onmouseleave="this.style.background='rgba(240,235,218,0.08)'"
+    >${label}</button>
+  `;
+}
+
+function buildSkipLink(label = 'Skip this') {
+  return `
+    <button id="intake-skip" style="
+      margin-top:16px;margin-left:16px;
+      font-family:var(--font-sans);font-weight:200;
+      font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+      color:rgba(240,235,218,0.2);
+      cursor:pointer;
+      transition:color 0.2s ease;
+    "
+    onmouseenter="this.style.color='rgba(240,235,218,0.45)'"
+    onmouseleave="this.style.color='rgba(240,235,218,0.2)'"
+    >${label}</button>
+  `;
+}
+
+// Step 1 — Year, make, model, variant
+function buildIdentityStep(state, context) {
+  return buildStepWrapper(1, 5, `
+    <div style="
+      font-family:var(--font-sans);font-weight:200;
+      font-size:12px;letter-spacing:0.06em;
+      color:rgba(240,235,218,0.4);
+      margin-bottom:24px;line-height:1.6;
+    ">What are we working with?</div>
+
+    ${buildIntakeInput('intake-year',    'Year',          '2015',       state.year,    { inputmode: 'numeric' })}
+    ${buildIntakeInput('intake-make',    'Make',          'Mazda',      state.make)}
+    ${buildIntakeInput('intake-model',   'Model',         'Mazda3',     state.model)}
+    ${buildIntakeInput('intake-variant', 'Trim / Variant','Sport',      state.variant, { optional: true })}
+
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${buildIntakeProceedButton('Continue')}
+    </div>
+  `);
+}
+
+// Step 2 — Current mileage. AI call fires here.
+function buildMileageStep(state, context) {
+  return buildStepWrapper(2, 5, `
+    <div style="
+      font-family:var(--font-serif);font-style:italic;font-weight:300;
+      font-size:15px;color:rgba(240,235,218,0.6);
+      margin-bottom:24px;line-height:1.6;
+    ">${state.year} ${state.make} ${state.model}${state.variant ? ' ' + state.variant : ''}</div>
+
+    <div style="
+      font-family:var(--font-sans);font-weight:200;
+      font-size:12px;letter-spacing:0.06em;
+      color:rgba(240,235,218,0.4);
+      margin-bottom:24px;line-height:1.6;
+    ">What's on the odometer right now?<br>
+    <span style="font-size:11px;color:rgba(240,235,218,0.2);">Approximate is fine — I'll build from here.</span></div>
+
+    ${buildIntakeInput('intake-mileage', 'Current kilometres', '267000', state.mileage, { inputmode: 'numeric' })}
+
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${buildIntakeProceedButton('Continue')}
+    </div>
+  `);
+}
+
+// Step 3 — Last service + preferred interval
+function buildServiceStep(state, context) {
+  const hasAiSchedule = !!state.ai_schedule;
+  const hint = hasAiSchedule && state.ai_schedule.next_oil_change_date
+    ? `<div style="
+        margin-top:-12px;margin-bottom:20px;
+        font-family:var(--font-sans);font-weight:200;
+        font-size:11px;letter-spacing:0.04em;
+        color:rgba(210,160,60,0.6);line-height:1.5;
+      ">Based on the schedule, next oil change window is around ${state.ai_schedule.next_oil_change_date}.</div>`
+    : '';
+
+  return buildStepWrapper(3, 5, `
+    <div style="
+      font-family:var(--font-sans);font-weight:200;
+      font-size:12px;letter-spacing:0.06em;
+      color:rgba(240,235,218,0.4);
+      margin-bottom:24px;line-height:1.6;
+    ">Last oil change — when and how many kilometres?<br>
+    <span style="font-size:11px;color:rgba(240,235,218,0.2);">If you're not sure, give me your best guess.</span></div>
+
+    ${buildIntakeInput('intake-last-oil-date',    'Date',        'March 10 2026',  state.last_oil_date,    { optional: false })}
+    ${buildIntakeInput('intake-last-oil-mileage', 'Kilometres',  '263551',         state.last_oil_mileage, { inputmode: 'numeric', optional: false })}
+    ${buildIntakeInput('intake-interval',         'Your preferred interval (km)', '8000', state.interval_km, { inputmode: 'numeric', optional: true })}
+
+    ${hint}
+
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${buildIntakeProceedButton('Continue')}
+      ${buildSkipLink("I don't know")}
+    </div>
+  `);
+}
+
+// Step 4 — Known history: recent work done
+// Presented as a checklist of common recent items. Tap to toggle.
+function buildHistoryStep(state, context) {
+  const mileage = parseInt(state.mileage, 10) || 0;
+
+  // Dynamically suggest items based on mileage + AI schedule
+  const suggestions = buildHistorySuggestions(mileage, state.ai_schedule);
+
+  const checkedIds = state.history.map(h => h.type);
+
+  const items = suggestions.map(s => {
+    const checked = checkedIds.includes(s.id);
+    return `
+      <button class="intake-history-item" data-id="${s.id}" data-label="${s.label}" style="
+        width:100%;text-align:left;
+        padding:14px 16px;margin-bottom:8px;
+        background:${checked ? 'rgba(210,160,60,0.08)' : 'rgba(240,235,218,0.03)'};
+        border:0.5px solid ${checked ? 'rgba(210,160,60,0.35)' : 'rgba(240,235,218,0.1)'};
+        border-radius:2px;
+        font-family:var(--font-sans);font-weight:300;
+        font-size:13px;letter-spacing:0.03em;
+        color:rgba(240,235,218,${checked ? '0.85' : '0.5'});
+        cursor:pointer;
+        transition:all 0.18s ease;
+        display:flex;justify-content:space-between;align-items:center;
+      ">
+        ${s.label}
+        <span style="
+          font-size:10px;letter-spacing:0.15em;
+          color:${checked ? 'rgba(210,160,60,0.7)' : 'rgba(240,235,218,0.15)'};
+        ">${checked ? 'done ✓' : s.hint || ''}</span>
+      </button>
+    `;
+  }).join('');
+
+  return buildStepWrapper(4, 5, `
+    <div style="
+      font-family:var(--font-sans);font-weight:200;
+      font-size:12px;letter-spacing:0.06em;
+      color:rgba(240,235,218,0.4);
+      margin-bottom:24px;line-height:1.6;
+    ">Anything recently done worth tracking?<br>
+    <span style="font-size:11px;color:rgba(240,235,218,0.2);">Tap what applies. Skip the rest.</span></div>
+
+    <div id="intake-history-list">${items}</div>
+
+    <div style="display:flex;align-items:center;margin-top:16px;">
+      ${buildIntakeProceedButton('Continue')}
+      ${buildSkipLink('Skip')}
+    </div>
+  `);
+}
+
+function buildHistorySuggestions(mileage, aiSchedule) {
+  // Base suggestions — always shown
+  const base = [
+    { id: 'spark_plugs',      label: 'Spark plugs',           hint: '' },
+    { id: 'timing_belt',      label: 'Timing belt / chain',   hint: '' },
+    { id: 'brakes',           label: 'Brakes (pads / rotors)',hint: '' },
+    { id: 'struts',           label: 'Struts / suspension',   hint: '' },
+    { id: 'coolant',          label: 'Coolant flush',         hint: '' },
+    { id: 'transmission',     label: 'Transmission fluid',    hint: '' },
+    { id: 'fuel_system',      label: 'Fuel system clean',     hint: '' },
+    { id: 'throttle_body',    label: 'Throttle body clean',   hint: '' },
+    { id: 'tires_summer',     label: 'Summer tires on',       hint: '' },
+    { id: 'tires_winter',     label: 'Winter tires on',       hint: '' },
+    { id: 'brake_fluid',      label: 'Brake fluid bleed',     hint: '' },
+    { id: 'cabin_filter',     label: 'Cabin air filter',      hint: '' },
+    { id: 'engine_filter',    label: 'Engine air filter',     hint: '' },
+  ];
+
+  // Add AI-flagged items if schedule has them
+  if (aiSchedule?.upcoming_items) {
+    aiSchedule.upcoming_items.forEach(item => {
+      if (!base.find(b => b.id === item.id)) {
+        base.push({ id: item.id, label: item.label, hint: 'coming up' });
+      }
+    });
+  }
+
+  return base;
+}
+
+// Step 5 — Details: transmission, plate province, shop, VIN
+function buildDetailsStep(state, context) {
+  const province = state.plate_province || store.get('user')?.province || '';
+  return buildStepWrapper(5, 5, `
+    <div style="
+      font-family:var(--font-sans);font-weight:200;
+      font-size:12px;letter-spacing:0.06em;
+      color:rgba(240,235,218,0.4);
+      margin-bottom:24px;line-height:1.6;
+    ">A few last things — all optional.</div>
+
+    <!-- Transmission toggle -->
+    <div style="margin-bottom:20px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.3);margin-bottom:10px;
+      ">Transmission <span style="color:rgba(240,235,218,0.15);">— optional</span></div>
+      <div style="display:flex;gap:10px;">
+        ${['automatic', 'manual', 'cvt'].map(t => `
+          <button class="intake-trans-btn" data-trans="${t}" style="
+            padding:11px 18px;border-radius:2px;
+            font-family:var(--font-sans);font-weight:300;
+            font-size:11px;letter-spacing:0.15em;text-transform:uppercase;
+            background:${state.transmission === t ? 'rgba(210,160,60,0.1)' : 'rgba(240,235,218,0.03)'};
+            border:0.5px solid ${state.transmission === t ? 'rgba(210,160,60,0.4)' : 'rgba(240,235,218,0.1)'};
+            color:rgba(240,235,218,${state.transmission === t ? '0.85' : '0.35'});
+            cursor:pointer;transition:all 0.18s ease;
+          ">${t}</button>
+        `).join('')}
+      </div>
+    </div>
+
+    ${buildIntakeInput('intake-province',  'Plate province', 'BC',              province,           { optional: true })}
+    ${buildIntakeInput('intake-shop',      'Preferred shop', 'Mr. Lube',        state.preferred_shop, { optional: true })}
+    ${buildIntakeInput('intake-vin',       'VIN',            '1HGBH41JXMN109...',state.vin,          { optional: true })}
+
+    <div style="
+      margin-top:-8px;margin-bottom:20px;
+      font-family:var(--font-sans);font-weight:200;
+      font-size:11px;letter-spacing:0.03em;
+      color:rgba(240,235,218,0.18);line-height:1.5;
+    ">VIN unlocks recall checks and exact OEM parts.</div>
+
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${buildIntakeProceedButton('Review')}
+      ${buildSkipLink('Skip all')}
+    </div>
+  `);
+}
+
+// Step — Review before writing to store
+function buildReviewStep(state, context) {
+  const name = [state.year, state.make, state.model, state.variant].filter(Boolean).join(' ');
+  const nextOil = state.ai_schedule?.next_oil_change_date || 'to be confirmed';
+
+  const rows = [
+    ['Vehicle',           name],
+    ['Odometer',          state.mileage ? `${parseInt(state.mileage,10).toLocaleString()} km` : 'not entered'],
+    ['Last oil change',   state.last_oil_date ? `${state.last_oil_date}${state.last_oil_mileage ? ' @ ' + parseInt(state.last_oil_mileage,10).toLocaleString() + ' km' : ''}` : 'not on file'],
+    ['Your interval',     state.interval_km ? `${parseInt(state.interval_km,10).toLocaleString()} km` : '8,000 km (default)'],
+    ['Next oil change',   nextOil],
+    ['Transmission',      state.transmission || 'not specified'],
+    ['Plate province',    state.plate_province || 'not specified'],
+    ['Preferred shop',    state.preferred_shop || 'not specified'],
+    state.vin ? ['VIN', state.vin] : null,
+    state.history.length ? ['History logged', state.history.map(h => h.label).join(', ')] : null,
+  ].filter(Boolean);
+
+  return `
+    <div style="
+      font-family:var(--font-sans);font-weight:200;
+      font-size:12px;letter-spacing:0.06em;
+      color:rgba(240,235,218,0.4);
+      margin-bottom:24px;line-height:1.6;
+    ">Here's what I've got. Add it?</div>
+
+    ${rows.map(([label, value]) => buildDetailRow(label, value)).join('')}
+
+    <div style="margin-top:28px;display:flex;flex-wrap:wrap;align-items:center;">
+      ${buildDoneButton('Add vehicle')}
+      <button id="intake-back-to-edit" style="
+        margin-left:10px;
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+        color:rgba(240,235,218,0.2);cursor:pointer;
+        transition:color 0.2s ease;
+      "
+      onmouseenter="this.style.color='rgba(240,235,218,0.45)'"
+      onmouseleave="this.style.color='rgba(240,235,218,0.2)'"
+      >edit</button>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// INTAKE LISTENER ATTACHMENT
+// Called from attachShellListeners when cascade type is vehicle_intake.
+// Handles all step transitions, toggle buttons, history checklist.
+// ---------------------------------------------------------------------------
+
+export function attachIntakeListeners(el, cascade, render, close, onComplete) {
+  const context = cascade.context;
+  const state   = context._intakeState;
+  if (!state) return;
+
+  // Proceed button — advances step
+  const proceedBtn = el.querySelector('#intake-proceed');
+  if (proceedBtn) {
+    proceedBtn.addEventListener('click', async () => {
+      await handleIntakeProceed(state, context, el, render, close, onComplete);
+    });
+  }
+
+  // Skip button — skips optional step
+  const skipBtn = el.querySelector('#intake-skip');
+  if (skipBtn) {
+    skipBtn.addEventListener('click', () => {
+      advanceIntakeStep(state);
+      render('intake');
+    });
+  }
+
+  // History checklist toggles
+  el.querySelectorAll('.intake-history-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id    = btn.dataset.id;
+      const label = btn.dataset.label;
+      const idx   = state.history.findIndex(h => h.type === id);
+      if (idx >= 0) {
+        state.history.splice(idx, 1);
+      } else {
+        state.history.push({ type: id, label, date: null, mileage: null, notes: null });
+      }
+      // Re-render this step only — state already updated
+      render('intake');
+    });
+  });
+
+  // Transmission toggles
+  el.querySelectorAll('.intake-trans-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.transmission = btn.dataset.trans;
+      render('intake');
+    });
+  });
+
+  // Back to edit from review
+  const backToEdit = el.querySelector('#intake-back-to-edit');
+  if (backToEdit) {
+    backToEdit.addEventListener('click', () => {
+      state.step = 'step_details';
+      render('intake');
+    });
+  }
+
+  // Done button on review — writes to store
+  el.querySelectorAll('.cascade-done').forEach(btn => {
+    btn.addEventListener('click', () => {
+      vehicleIntakeRenderer.complete(context, 'intake', {});
+      close();
+      onComplete?.();
+    });
+  });
+}
+
+async function handleIntakeProceed(state, context, el, render, close, onComplete) {
+  if (state.step === 'step_identity') {
+    state.year    = el.querySelector('#intake-year')?.value.trim()    || '';
+    state.make    = el.querySelector('#intake-make')?.value.trim()    || '';
+    state.model   = el.querySelector('#intake-model')?.value.trim()   || '';
+    state.variant = el.querySelector('#intake-variant')?.value.trim() || '';
+    if (!state.year || !state.make || !state.model) return; // require basics
+    state.step = 'step_mileage';
+    render('intake');
+    return;
+  }
+
+  if (state.step === 'step_mileage') {
+    state.mileage = el.querySelector('#intake-mileage')?.value.trim() || '';
+    if (!state.mileage) return;
+    state.step = 'step_service';
+
+    // Fire AI call in background — don't block step transition
+    render('intake');
+    fetchVehicleSchedule(state).then(schedule => {
+      state.ai_schedule = schedule;
+      // No re-render needed — schedule surfaces in step_service hint
+    });
+    return;
+  }
+
+  if (state.step === 'step_service') {
+    state.last_oil_date    = el.querySelector('#intake-last-oil-date')?.value.trim()    || '';
+    state.last_oil_mileage = el.querySelector('#intake-last-oil-mileage')?.value.trim() || '';
+    state.interval_km      = el.querySelector('#intake-interval')?.value.trim()         || '';
+    state.step = 'step_history';
+    render('intake');
+    return;
+  }
+
+  if (state.step === 'step_history') {
+    // History items are toggled live — just advance
+    state.step = 'step_details';
+    render('intake');
+    return;
+  }
+
+  if (state.step === 'step_details') {
+    state.plate_province  = el.querySelector('#intake-province')?.value.trim()  || '';
+    state.preferred_shop  = el.querySelector('#intake-shop')?.value.trim()      || '';
+    state.vin             = el.querySelector('#intake-vin')?.value.trim()        || '';
+    state.step = 'step_review';
+    render('intake');
+    return;
+  }
+}
+
+function advanceIntakeStep(state) {
+  const order = ['step_identity', 'step_mileage', 'step_service', 'step_history', 'step_details', 'step_review'];
+  const idx = order.indexOf(state.step);
+  if (idx >= 0 && idx < order.length - 1) {
+    state.step = order[idx + 1];
+  }
+}
+
+// AI call — retrieves maintenance schedule for year/make/model at current mileage
+async function fetchVehicleSchedule(state) {
+  try {
+    return await api.getVehicleSchedule({
+      year:              state.year,
+      make:              state.make,
+      model:             state.model,
+      variant:           state.variant,
+      mileage:           state.mileage,
+      last_oil_date:     state.last_oil_date,
+      last_oil_mileage:  state.last_oil_mileage,
+      interval_km:       state.interval_km,
+    });
+  } catch (err) {
+    console.warn('[intake] AI schedule fetch failed:', err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// VEHICLE DETAIL — Full vehicle record cascade
+//
+// Opens when user taps a vehicle in the vehicles grab and go.
+// Shows everything the app knows. Also the entry point for logging
+// new service and adding to the watch list.
+//
+// Sections:
+//   — Status bar: mileage, next service, oil spec
+//   — Service history: dated entries, newest first
+//   — Known history: major work logged at intake
+//   — Tires: summer/winter, season count, current status
+//   — Watch list: flagged items not yet done
+//   — Details: transmission, plate province, shop, VIN
+//
+// Actions:
+//   — Log a service (fires service log sub-flow)
+//   — Add to watch list
+// ---------------------------------------------------------------------------
+
+const vehicleDetailRenderer = {
+
+  async resolve(context, _preference) {
+    return { routes: [], route: 'detail' };
+  },
+
+  async buildRoute(route, context) {
+    const vehicle = getVehicle(context.vehicle_id);
+    if (!vehicle) return buildErrorHTML();
+    if (route === 'log_service' || context._logMode) return buildLogServiceHTML(vehicle);
+    return buildVehicleDetailHTML(vehicle);
+  },
+
+  complete(context, _route, _update) {
+    logCascadeComplete('vehicle_detail', context.vehicle_id, 'viewed');
+  },
+};
+
+function buildVehicleDetailHTML(v) {
+  const sections = [];
+
+  // ── Vehicle facts (AI-authoritative) ─────────────────────────────────────
+  // Shown first — what the AI knows about this engine, not user-entered data.
+  if (v.vehicle_facts) {
+    const f = v.vehicle_facts;
+    const factLines = [
+      f.timing_system   ? buildEditableLine(v.id, 'timing_system',   'Timing',         f.timing_system,   'text') : null,
+      f.serpentine_belt ? buildEditableLine(v.id, 'serpentine_belt', 'Serpentine belt', f.serpentine_belt, 'text') : null,
+      f.spark_plugs     ? buildEditableLine(v.id, 'spark_plugs',     'Spark plugs',     f.spark_plugs,     'text') : null,
+      f.transmission_fluid ? buildEditableLine(v.id, 'transmission_fluid', 'Trans fluid', f.transmission_fluid, 'text') : null,
+      f.coolant         ? buildEditableLine(v.id, 'coolant',         'Coolant',         f.coolant,         'text') : null,
+      f.notes           ? buildEditableLine(v.id, 'facts_notes',     'Engine notes',    f.notes,           'text') : null,
+    ].filter(Boolean);
+    if (factLines.length) sections.push(buildDetailSection('Engine facts', factLines.join('')));
+  }
+
+  // ── Status ────────────────────────────────────────────────────────────────
+  const statusLines = [
+    buildEditableLine(v.id, 'mileage_at_entry',      'Odometer at entry',   v.mileage_at_entry     ? parseInt(v.mileage_at_entry).toLocaleString() + ' km'      : '', 'text'),
+    buildEditableLine(v.id, 'mileage_date',           'Entry date',          v.mileage_date         ? formatDetailDate(v.mileage_date)                            : '', 'date'),
+    buildEditableLine(v.id, 'preferred_interval_km',  'Oil interval',        v.preferred_interval_km ? v.preferred_interval_km.toLocaleString() + ' km'          : '', 'text'),
+    v.maintenance_schedule?.oil_spec
+      ? buildEditableLine(v.id, 'oil_spec',           'Oil spec',            v.maintenance_schedule.oil_spec, 'text') : null,
+    buildEditableLine(v.id, 'service_due',            'Next service',        v.service_due          ? formatDetailDate(v.service_due)                             : '', 'date'),
+    v.maintenance_schedule?.next_oil_change_km
+      ? buildReadonlyLine('Next oil change km', '~' + parseInt(v.maintenance_schedule.next_oil_change_km).toLocaleString() + ' km') : null,
+    buildEditableLine(v.id, 'registration_expiry',    'Registration expiry', v.registration_expiry  ? formatDetailDate(v.registration_expiry)                     : '', 'date'),
+    buildEditableLine(v.id, 'insurance_expiry',       'Insurance expiry',    v.insurance_expiry     ? formatDetailDate(v.insurance_expiry)                        : '', 'date'),
+  ].filter(Boolean);
+  sections.push(buildDetailSection('Status', statusLines.join('')));
+
+  // ── AI maintenance notes ──────────────────────────────────────────────────
+  if (v.maintenance_schedule?.notes) {
+    sections.push(buildDetailSection('Schedule notes', `
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:13px;letter-spacing:0.03em;
+        color:rgba(240,235,218,0.45);line-height:1.6;
+        padding:6px 0 8px;
+      ">${v.maintenance_schedule.notes}</div>
+    `));
+  }
+
+  // ── Service history ───────────────────────────────────────────────────────
+  if (v.service_history?.length) {
+    const sorted = [...v.service_history].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const rows = sorted.map((s, i) => {
+      const idx = v.service_history.indexOf(s);
+      return buildEditableHistoryRow(v.id, 'service_history', idx, s);
+    }).join('');
+    sections.push(buildDetailSection('Service history', rows));
+  }
+
+  // ── Known history ─────────────────────────────────────────────────────────
+  if (v.known_history?.length) {
+    const rows = v.known_history.map((h, i) =>
+      buildEditableHistoryRow(v.id, 'known_history', i, {
+        type:   h.type,
+        date:   h.date || h.date_approx,
+        mileage: h.mileage_approx,
+        notes:  h.notes,
+        label:  h.label,
+      })
+    ).join('');
+    sections.push(buildDetailSection('Known history', rows));
+  }
+
+  // ── Upcoming from AI schedule ─────────────────────────────────────────────
+  if (v.maintenance_schedule?.upcoming_items?.length) {
+    const rows = v.maintenance_schedule.upcoming_items.map(item => {
+      const urgencyColor = item.urgency === 'now'
+        ? 'rgba(210,160,60,0.8)'
+        : item.urgency === 'soon'
+          ? 'rgba(240,235,218,0.55)'
+          : 'rgba(240,235,218,0.3)';
+      return `
+        <div style="
+          padding:11px 0;border-bottom:0.5px solid rgba(240,235,218,0.05);
+          display:flex;justify-content:space-between;align-items:baseline;
+        ">
+          <div style="font-family:var(--font-sans);font-weight:300;font-size:13px;color:rgba(240,235,218,0.7);">${item.label}</div>
+          <div style="font-family:var(--font-sans);font-weight:200;font-size:11px;color:${urgencyColor};white-space:nowrap;margin-left:12px;">
+            ${item.due_km ? '~' + parseInt(item.due_km).toLocaleString() + ' km' : item.urgency || ''}
+          </div>
+        </div>`;
+    }).join('');
+    sections.push(buildDetailSection('Upcoming', rows));
+  }
+
+  // ── Tires ─────────────────────────────────────────────────────────────────
+  if (v.tires) {
+    const tireLines = [];
+    if (v.tires.summer) {
+      const s = v.tires.summer;
+      tireLines.push(buildEditableLine(v.id, 'tires_summer_brand',   'Summer brand',    s.brand  || '',    'text'));
+      tireLines.push(buildEditableLine(v.id, 'tires_summer_season',  'Summer seasons',  s.season ? String(s.season) : '', 'text'));
+      tireLines.push(buildEditableLine(v.id, 'tires_summer_on',      'Summer on now',   s.on ? 'yes' : 'no', 'text'));
+      if (s.installed) tireLines.push(buildEditableLine(v.id, 'tires_summer_installed', 'Summer installed', formatDetailDate(s.installed), 'date'));
+    }
+    if (v.tires.winter) {
+      const w = v.tires.winter;
+      tireLines.push(buildEditableLine(v.id, 'tires_winter_brand',   'Winter brand',    w.brand  || '',    'text'));
+      tireLines.push(buildEditableLine(v.id, 'tires_winter_season',  'Winter seasons',  w.season ? String(w.season) : '', 'text'));
+      tireLines.push(buildEditableLine(v.id, 'tires_winter_on',      'Winter on now',   w.on ? 'yes' : 'no', 'text'));
+      if (w.notes) tireLines.push(buildEditableLine(v.id, 'tires_winter_notes', 'Winter notes', w.notes, 'text'));
+    }
+    if (tireLines.length) sections.push(buildDetailSection('Tires', tireLines.join('')));
+  }
+
+  // ── Watch list ────────────────────────────────────────────────────────────
+  if (v.watch_list?.length) {
+    const rows = v.watch_list.map((w, i) =>
+      buildEditableLine(v.id, `watch_${i}`, w.label || w.type?.replace(/_/g, ' '),
+        w.status?.replace(/_/g, ' ') || 'flagged', 'text')
+    ).join('');
+    sections.push(buildDetailSection('Watch list', rows));
+  }
+
+  // ── Vehicle details ───────────────────────────────────────────────────────
+  const detailLines = [
+    buildEditableLine(v.id, 'transmission',   'Transmission',   v.transmission   || '', 'text'),
+    buildEditableLine(v.id, 'plate_province', 'Plate province', v.plate_province || '', 'text'),
+    buildEditableLine(v.id, 'preferred_shop', 'Preferred shop', v.preferred_shop || '', 'text'),
+    buildEditableLine(v.id, 'vin',            'VIN',            v.vin            || '', 'text'),
+  ];
+  sections.push(buildDetailSection('Details', detailLines.join('')));
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+  const logBtn = buildActionButton('Log a service', {
+    primary: true,
+    class: 'vehicle-log-service',
+    dataAttrs: `data-vehicle-id="${v.id}"`,
+  });
+
+  return `
+    ${sections.join('')}
+    <div style="margin-top:28px;display:flex;flex-wrap:wrap;">
+      ${logBtn}
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// EDITABLE LINE — tap to edit, blur/enter to save
+// Each line knows its field path so it can write directly to the store.
+// field: dot-path string — 'transmission', 'tires_summer_brand', etc.
+// ---------------------------------------------------------------------------
+
+function buildEditableLine(vehicleId, field, label, value, type) {
+  const displayVal = value || '<span style="color:rgba(240,235,218,0.18);">—</span>';
+  return `
+    <div class="editable-line" data-vehicle-id="${vehicleId}" data-field="${field}" data-type="${type}" style="
+      padding:11px 0;
+      border-bottom:0.5px solid rgba(240,235,218,0.05);
+      cursor:text;
+    ">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+        color:rgba(240,235,218,0.22);margin-bottom:4px;
+      ">${label}</div>
+      <div class="editable-value" style="
+        font-family:var(--font-sans);font-weight:300;
+        font-size:13px;letter-spacing:0.03em;
+        color:rgba(240,235,218,0.75);line-height:1.4;
+        min-height:18px;
+      ">${displayVal}</div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// VEHICLE FIELD SAVE — writes a single flat field back to the vehicle store
+// Handles dot-pathed fields like tires_summer_brand → tires.summer.brand
+// ---------------------------------------------------------------------------
+
+function saveVehicleField(vehicleId, field, value) {
+  const vehicles = store.get('vehicles') || [];
+  const idx = vehicles.findIndex(v => v.id === vehicleId);
+  if (idx < 0) return;
+  const v = vehicles[idx];
+
+  // Strip display formatting for numeric fields
+  const numVal = parseFloat(value.replace(/[^0-9.]/g, ''));
+
+  switch (field) {
+    case 'mileage_at_entry':      v.mileage_at_entry      = isNaN(numVal) ? value : numVal; break;
+    case 'mileage_date':          v.mileage_date           = value; break;
+    case 'preferred_interval_km': v.preferred_interval_km  = isNaN(numVal) ? 8000 : numVal; break;
+    case 'oil_spec':
+      v.maintenance_schedule = v.maintenance_schedule || {};
+      v.maintenance_schedule.oil_spec = value; break;
+    case 'service_due':           v.service_due            = value; break;
+    case 'registration_expiry':   v.registration_expiry    = value; break;
+    case 'insurance_expiry':      v.insurance_expiry       = value; break;
+    case 'transmission':          v.transmission           = value; break;
+    case 'plate_province':        v.plate_province         = value; break;
+    case 'preferred_shop':        v.preferred_shop         = value; break;
+    case 'vin':                   v.vin                    = value; break;
+    case 'timing_system':
+      v.vehicle_facts = v.vehicle_facts || {};
+      v.vehicle_facts.timing_system = value; break;
+    case 'serpentine_belt':
+      v.vehicle_facts = v.vehicle_facts || {};
+      v.vehicle_facts.serpentine_belt = value; break;
+    case 'spark_plugs':
+      v.vehicle_facts = v.vehicle_facts || {};
+      v.vehicle_facts.spark_plugs = value; break;
+    case 'transmission_fluid':
+      v.vehicle_facts = v.vehicle_facts || {};
+      v.vehicle_facts.transmission_fluid = value; break;
+    case 'coolant':
+      v.vehicle_facts = v.vehicle_facts || {};
+      v.vehicle_facts.coolant = value; break;
+    case 'facts_notes':
+      v.vehicle_facts = v.vehicle_facts || {};
+      v.vehicle_facts.notes = value; break;
+    // Tire fields — tires_summer_brand, tires_winter_season, etc.
+    default:
+      if (field.startsWith('tires_')) {
+        const parts  = field.split('_'); // ['tires','summer','brand']
+        const season = parts[1]; // 'summer' | 'winter'
+        const key    = parts.slice(2).join('_'); // 'brand' | 'season' | 'on' | 'notes'
+        v.tires = v.tires || {};
+        v.tires[season] = v.tires[season] || {};
+        if (key === 'on') {
+          v.tires[season].on = value.toLowerCase() === 'yes' || value === 'true';
+        } else if (key === 'season') {
+          v.tires[season].season = isNaN(parseInt(value, 10)) ? value : parseInt(value, 10);
+        } else {
+          v.tires[season][key] = value;
+        }
+      } else if (field.startsWith('watch_')) {
+        const wIdx = parseInt(field.replace('watch_', ''), 10);
+        v.watch_list = v.watch_list || [];
+        if (v.watch_list[wIdx]) v.watch_list[wIdx].status = value;
+      }
+  }
+
+  store.set('vehicles', vehicles);
+}
+
+// Shared input style for inline history edit form
+function editInputStyle() {
+  return `
+    width:100%;box-sizing:border-box;
+    background:rgba(240,235,218,0.04);
+    border:none;border-bottom:0.5px solid rgba(240,235,218,0.1);
+    padding:6px 2px;
+    font-family:var(--font-sans);font-weight:300;
+    font-size:13px;letter-spacing:0.03em;
+    color:rgba(240,235,218,0.8);
+    outline:none;
+  `;
+}
+
+function buildReadonlyLine(label, value) {
+  return `
+    <div style="padding:11px 0;border-bottom:0.5px solid rgba(240,235,218,0.05);">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+        color:rgba(240,235,218,0.22);margin-bottom:4px;
+      ">${label}</div>
+      <div style="
+        font-family:var(--font-sans);font-weight:300;
+        font-size:13px;color:rgba(240,235,218,0.4);
+      ">${value}</div>
+    </div>
+  `;
+}
+
+function buildEditableHistoryRow(vehicleId, collection, index, entry) {
+  const summary = [
+    entry.date   ? formatDetailDate(entry.date) : null,
+    entry.mileage ? parseInt(entry.mileage).toLocaleString() + ' km' : null,
+    entry.label  || entry.type?.replace(/_/g, ' ') || null,
+    entry.shop   || null,
+    entry.notes  || null,
+  ].filter(Boolean).join(' · ');
+
+  return `
+    <div class="editable-history-row" data-vehicle-id="${vehicleId}"
+      data-collection="${collection}" data-index="${index}" style="
+      padding:11px 0;
+      border-bottom:0.5px solid rgba(240,235,218,0.05);
+      cursor:text;
+    ">
+      <div class="history-summary" style="
+        font-family:var(--font-sans);font-weight:300;
+        font-size:13px;letter-spacing:0.03em;
+        color:rgba(240,235,218,0.7);line-height:1.4;
+      ">${summary || '<span style="color:rgba(240,235,218,0.18);">—</span>'}</div>
+      <div class="history-edit-form" style="display:none;margin-top:10px;"></div>
+    </div>
+  `;
+}
+
+
+
+function buildLogServiceHTML(v) {
+  const today = new Date().toISOString().split('T')[0];
+  const serviceTypes = [
+    ['oil_change',      'Oil change'],
+    ['tire_rotation',   'Tire rotation'],
+    ['tire_swap',       'Tire swap'],
+    ['brake_service',   'Brakes'],
+    ['filters',         'Filters'],
+    ['fluids',          'Fluids'],
+    ['inspection',      'Inspection'],
+    ['other',           'Other'],
+  ];
+
+  const typeOptions = serviceTypes.map(([val, label]) =>
+    `<option value="${val}">${label}</option>`
+  ).join('');
+
+  return `
+    <div style="
+      font-family:var(--font-sans);font-weight:200;
+      font-size:12px;letter-spacing:0.06em;
+      color:rgba(240,235,218,0.4);
+      margin-bottom:24px;line-height:1.6;
+    ">Log a service — ${v.name}</div>
+
+    <div style="margin-bottom:18px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.3);margin-bottom:8px;
+      ">Service type</div>
+      <select id="log-type" style="
+        width:100%;box-sizing:border-box;
+        background:rgba(240,235,218,0.04);
+        border:0.5px solid rgba(240,235,218,0.12);
+        border-radius:2px;padding:14px 16px;
+        font-family:var(--font-sans);font-weight:300;
+        font-size:14px;color:rgba(240,235,218,0.85);
+        outline:none;-webkit-appearance:none;
+      ">${typeOptions}</select>
+    </div>
+
+    <div style="margin-bottom:18px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.3);margin-bottom:8px;
+      ">Date</div>
+      <input id="log-date" type="date" value="${today}" style="
+        width:100%;box-sizing:border-box;
+        background:rgba(240,235,218,0.04);
+        border:0.5px solid rgba(240,235,218,0.12);
+        border-radius:2px;padding:14px 16px;
+        font-family:var(--font-sans);font-weight:300;
+        font-size:14px;color:rgba(240,235,218,0.85);
+        outline:none;-webkit-appearance:none;
+        color-scheme:dark;
+      " />
+    </div>
+
+    <div style="margin-bottom:18px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.3);margin-bottom:8px;
+      ">Kilometres <span style="color:rgba(240,235,218,0.15);">— optional</span></div>
+      <input id="log-mileage" type="text" inputmode="numeric"
+        placeholder="${v.mileage_at_entry ? (parseInt(v.mileage_at_entry) + 5000).toLocaleString() : '267000'}"
+        style="
+          width:100%;box-sizing:border-box;
+          background:rgba(240,235,218,0.04);
+          border:0.5px solid rgba(240,235,218,0.12);
+          border-radius:2px;padding:14px 16px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:14px;color:rgba(240,235,218,0.85);
+          outline:none;-webkit-appearance:none;
+        "
+        onfocus="this.style.borderColor='rgba(240,235,218,0.3)'"
+        onblur="this.style.borderColor='rgba(240,235,218,0.12)'"
+      />
+    </div>
+
+    <div style="margin-bottom:18px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.3);margin-bottom:8px;
+      ">Shop <span style="color:rgba(240,235,218,0.15);">— optional</span></div>
+      <input id="log-shop" type="text"
+        placeholder="${v.preferred_shop || 'Mr. Lube'}"
+        value="${v.preferred_shop || ''}"
+        style="
+          width:100%;box-sizing:border-box;
+          background:rgba(240,235,218,0.04);
+          border:0.5px solid rgba(240,235,218,0.12);
+          border-radius:2px;padding:14px 16px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:14px;color:rgba(240,235,218,0.85);
+          outline:none;-webkit-appearance:none;
+        "
+        onfocus="this.style.borderColor='rgba(240,235,218,0.3)'"
+        onblur="this.style.borderColor='rgba(240,235,218,0.12)'"
+      />
+    </div>
+
+    <div style="margin-bottom:24px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.3);margin-bottom:8px;
+      ">Notes <span style="color:rgba(240,235,218,0.15);">— optional</span></div>
+      <input id="log-notes" type="text"
+        placeholder="anything worth remembering"
+        style="
+          width:100%;box-sizing:border-box;
+          background:rgba(240,235,218,0.04);
+          border:0.5px solid rgba(240,235,218,0.12);
+          border-radius:2px;padding:14px 16px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:14px;color:rgba(240,235,218,0.85);
+          outline:none;-webkit-appearance:none;
+        "
+        onfocus="this.style.borderColor='rgba(240,235,218,0.3)'"
+        onblur="this.style.borderColor='rgba(240,235,218,0.12)'"
+      />
+    </div>
+
+    <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;">
+      ${buildActionButton('Save', { primary: true, class: '', dataAttrs: 'id="log-service-save"' })}
+      <button id="log-service-cancel" style="
+        margin-left:12px;
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+        color:rgba(240,235,218,0.2);cursor:pointer;
+        transition:color 0.2s ease;
+      "
+      onmouseenter="this.style.color='rgba(240,235,218,0.45)'"
+      onmouseleave="this.style.color='rgba(240,235,218,0.2)'"
+      >cancel</button>
+    </div>
+  `;
+}
+
+function buildDetailSection(title, content) {
+  return `
+    <div style="margin-bottom:24px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.22em;text-transform:uppercase;
+        color:rgba(240,235,218,0.25);
+        margin-bottom:10px;padding-bottom:6px;
+        border-bottom:0.5px solid rgba(240,235,218,0.06);
+      ">${title}</div>
+      ${content}
+    </div>
+  `;
+}
+
+function buildDetailLine(value) {
+  return `
+    <div style="
+      padding:9px 0;
+      border-bottom:0.5px solid rgba(240,235,218,0.04);
+      font-family:var(--font-sans);font-weight:300;
+      font-size:13px;letter-spacing:0.03em;
+      color:rgba(240,235,218,0.7);
+      line-height:1.5;
+    ">${value}</div>
+  `;
+}
+
+function formatDetailDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + (dateStr.length === 10 ? 'T12:00:00' : ''));
+  if (isNaN(d)) return dateStr;
+  return d.toLocaleDateString('en-CA', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+// ---------------------------------------------------------------------------
+// HC-6 — MAINTENANCE TASK
+// Triggered when a maintenance task surfaces as urgent in the ATAK.
+// Shows what the task is, when it was last done, what's needed.
+// Routes: mark done (logs completion, recalculates next due).
+// ---------------------------------------------------------------------------
+
+const maintenanceTaskRenderer = {
+
+  async resolve(context, _preference) {
+    return { routes: [], route: 'task' };
+  },
+
+  async buildRoute(_route, context) {
+    const tasks = store.get('maintenance_tasks') || [];
+    const task  = tasks.find(t => t.id === context.task_id);
+    if (!task) return buildErrorHTML();
+
+    const today    = new Date();
+    const due      = task.next_due ? new Date(task.next_due) : null;
+    const days     = due ? Math.ceil((due - today) / (1000 * 60 * 60 * 24)) : null;
+    const overdue  = days !== null && days < 0;
+    const lastDone = task.last_done ? formatDetailDate(task.last_done) : 'Not on file';
+
+    const urgencyLine = overdue
+      ? `Overdue by ${Math.abs(days)} days`
+      : days === 0 ? 'Due today'
+      : days !== null ? `Due in ${days} days`
+      : 'No due date calculated';
+
+    const sections = [
+      buildDetailRow('Task',      task.label),
+      buildDetailRow('Status',    urgencyLine, { urgent: overdue }),
+      buildDetailRow('Last done', lastDone),
+      task.interval_label ? buildDetailRow('Interval', task.interval_label) : '',
+      task.notes          ? buildDetailRow('Notes',    task.notes)          : '',
+    ].filter(Boolean).join('');
+
+    return `
+      ${sections}
+      <div style="margin-top:24px;display:flex;flex-wrap:wrap;">
+        ${buildDoneButton('Mark done')}
+      </div>
+    `;
+  },
+
+  complete(context, _route, _update) {
+    const tasks = store.get('maintenance_tasks') || [];
+    const idx   = tasks.findIndex(t => t.id === context.task_id);
+    if (idx < 0) return;
+
+    const task     = tasks[idx];
+    const today    = new Date().toISOString().split('T')[0];
+    task.last_done = today;
+
+    // Recalculate next due from interval
+    if (task.interval_days) {
+      const next = new Date();
+      next.setDate(next.getDate() + task.interval_days);
+      task.next_due = next.toISOString().split('T')[0];
+    }
+
+    store.set('maintenance_tasks', tasks);
+    logCascadeComplete('maintenance_task', context.task_id, 'done');
+  },
+};
+
+// ---------------------------------------------------------------------------
+// MAINTENANCE INTAKE — Add a new recurring task
+// Minimal: label + interval. Everything else optional.
+// Store shape:
+// {
+//   id: 'mt_<timestamp>',
+//   label: 'Furnace filter',
+//   interval_days: 90,
+//   interval_label: 'Every 3 months',
+//   last_done: '2026-02-01',
+//   next_due: '2026-05-02',
+//   notes: null,
+//   tier: 'caution',   // warning | caution — governs alert tier when due
+// }
+// ---------------------------------------------------------------------------
+
+const maintenanceIntakeRenderer = {
+
+  async resolve(context, _preference) {
+    if (!context._mState) context._mState = { step: 'label' };
+    return { routes: [], route: 'intake' };
+  },
+
+  async buildRoute(_route, context) {
+    const s = context._mState || { step: 'label' };
+    return buildMaintenanceIntakeStep(s);
+  },
+
+  complete(context, _route, _update) {
+    const s = context._mState;
+    if (!s) return;
+
+    const tasks = store.get('maintenance_tasks') || [];
+    const id    = `mt_${Date.now()}`;
+
+    let next_due = null;
+    if (s.last_done && s.interval_days) {
+      const d = new Date(s.last_done);
+      d.setDate(d.getDate() + parseInt(s.interval_days, 10));
+      next_due = d.toISOString().split('T')[0];
+    } else if (s.interval_days) {
+      // No last done — due soon, flag in 7 days as a prompt to check
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      next_due = d.toISOString().split('T')[0];
+    }
+
+    tasks.push({
+      id,
+      label:          s.label,
+      interval_days:  s.interval_days ? parseInt(s.interval_days, 10) : null,
+      interval_label: s.interval_label || null,
+      last_done:      s.last_done || null,
+      next_due,
+      notes:          s.notes || null,
+      tier:           'caution',
+    });
+
+    store.set('maintenance_tasks', tasks);
+    logCascadeComplete('maintenance_intake', id, 'complete');
+  },
+};
+
+function buildMaintenanceIntakeStep(s) {
+  if (s.step === 'label') {
+    return `
+      <div style="font-family:var(--font-sans);font-weight:200;font-size:12px;letter-spacing:0.06em;color:rgba(240,235,218,0.4);margin-bottom:24px;line-height:1.6;">
+        What needs tracking?
+      </div>
+      ${buildMIntakeInput('m-label', 'Task', 'Furnace filter', s.label || '')}
+      ${buildMIntakeInput('m-notes', 'Notes', 'anything worth remembering', s.notes || '', true)}
+      <div style="display:flex;align-items:center;margin-top:8px;">
+        ${buildMProceed('Continue')}
+      </div>
+    `;
+  }
+
+  if (s.step === 'interval') {
+    const presets = [
+      { label: 'Monthly',       days: 30  },
+      { label: 'Every 3 months', days: 90  },
+      { label: 'Every 6 months', days: 180 },
+      { label: 'Annually',      days: 365 },
+    ];
+    const tiles = presets.map(p => `
+      <button class="m-preset" data-days="${p.days}" data-label="${p.label}" style="
+        padding:13px 18px;margin-bottom:8px;margin-right:8px;
+        border-radius:2px;border:0.5px solid rgba(240,235,218,0.12);
+        font-family:var(--font-sans);font-weight:300;
+        font-size:12px;letter-spacing:0.06em;
+        color:rgba(240,235,218,0.6);
+        background:rgba(240,235,218,0.03);
+        cursor:pointer;transition:all 0.18s ease;
+      "
+      onmouseenter="this.style.borderColor='rgba(240,235,218,0.3)';this.style.color='rgba(240,235,218,0.88)'"
+      onmouseleave="this.style.borderColor='rgba(240,235,218,0.12)';this.style.color='rgba(240,235,218,0.6)'"
+      >${p.label}</button>
+    `).join('');
+
+    return `
+      <div style="font-family:var(--font-sans);font-weight:200;font-size:12px;letter-spacing:0.06em;color:rgba(240,235,218,0.4);margin-bottom:24px;line-height:1.6;">
+        How often? <span style="color:rgba(240,235,218,0.2);font-size:11px;">— tap or enter custom</span>
+      </div>
+      <div style="margin-bottom:16px;flex-wrap:wrap;display:flex;">${tiles}</div>
+      ${buildMIntakeInput('m-interval-days',  'Custom interval (days)', '90', s.interval_days || '')}
+      ${buildMIntakeInput('m-interval-label', 'Custom label',           'Every 3 months', s.interval_label || '', true)}
+      <div style="display:flex;align-items:center;margin-top:8px;">
+        ${buildMProceed('Continue')}
+        ${buildMSkip('Skip')}
+      </div>
+    `;
+  }
+
+  if (s.step === 'last_done') {
+    return `
+      <div style="font-family:var(--font-sans);font-weight:200;font-size:12px;letter-spacing:0.06em;color:rgba(240,235,218,0.4);margin-bottom:24px;line-height:1.6;">
+        When was it last done?<br>
+        <span style="font-size:11px;color:rgba(240,235,218,0.2);">Helps calculate when it's next due.</span>
+      </div>
+      ${buildMIntakeInput('m-last-done', 'Date last done', '', s.last_done || '', false, 'date')}
+      <div style="display:flex;align-items:center;margin-top:8px;">
+        ${buildMProceed('Add task')}
+        ${buildMSkip("I don't know")}
+      </div>
+    `;
+  }
+
+  return '';
+}
+
+function buildMIntakeInput(id, label, placeholder, value, optional = false, type = 'text') {
+  return `
+    <div style="margin-bottom:18px;">
+      <div style="font-family:var(--font-sans);font-weight:200;font-size:10px;letter-spacing:0.2em;text-transform:uppercase;color:rgba(240,235,218,0.3);margin-bottom:8px;">
+        ${label}${optional ? ' <span style="color:rgba(240,235,218,0.15);">— optional</span>' : ''}
+      </div>
+      <input id="${id}" type="${type}" ${type === 'date' ? 'style="color-scheme:dark;"' : ''}
+        placeholder="${placeholder}" value="${value}" style="
+        width:100%;box-sizing:border-box;
+        background:rgba(240,235,218,0.04);
+        border:0.5px solid rgba(240,235,218,0.12);border-radius:2px;
+        padding:14px 16px;
+        font-family:var(--font-sans);font-weight:300;
+        font-size:14px;color:rgba(240,235,218,0.85);
+        outline:none;-webkit-appearance:none;
+      "
+      onfocus="this.style.borderColor='rgba(240,235,218,0.3)'"
+      onblur="this.style.borderColor='rgba(240,235,218,0.12)'"
+      />
+    </div>
+  `;
+}
+
+function buildMProceed(label) {
+  return `<button id="m-proceed" style="
+    padding:14px 28px;border-radius:2px;
+    background:rgba(240,235,218,0.08);border:0.5px solid rgba(240,235,218,0.3);
+    font-family:var(--font-sans);font-weight:300;
+    font-size:11px;letter-spacing:0.22em;text-transform:uppercase;
+    color:rgba(240,235,218,0.85);cursor:pointer;transition:all 0.2s ease;
+  "
+  onmouseenter="this.style.background='rgba(240,235,218,0.13)'"
+  onmouseleave="this.style.background='rgba(240,235,218,0.08)'"
+  >${label}</button>`;
+}
+
+function buildMSkip(label) {
+  return `<button id="m-skip" style="
+    margin-left:16px;
+    font-family:var(--font-sans);font-weight:200;
+    font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+    color:rgba(240,235,218,0.2);cursor:pointer;transition:color 0.2s ease;
+  "
+  onmouseenter="this.style.color='rgba(240,235,218,0.45)'"
+  onmouseleave="this.style.color='rgba(240,235,218,0.2)'"
+  >${label}</button>`;
+}
+
+
+// ---------------------------------------------------------------------------
+// PERSON DETAIL — Partner or child full record with tap-to-edit
+// Triggered by tapping a person row in the ATAK brief.
+// Reads from team.partner or team.children[idx] via person_id.
+// ---------------------------------------------------------------------------
+
+const personDetailRenderer = {
+
+  async resolve(context, _preference) {
+    return { routes: [], route: 'detail' };
+  },
+
+  async buildRoute(_route, context) {
+    const { person, personType } = resolvePerson(context.person_id);
+    if (!person) return buildErrorHTML();
+    return buildPersonDetailHTML(person, personType, context.person_id);
+  },
+
+  complete(context, _route, _update) {
+    logCascadeComplete('person_detail', context.person_id, 'viewed');
+  },
+};
+
+function resolvePerson(personId) {
+  const team = store.get('team') || {};
+  if (personId === 'partner') {
+    return { person: team.partner || null, personType: 'partner' };
+  }
+  if (personId?.startsWith('child_')) {
+    const idx = parseInt(personId.replace('child_', ''), 10);
+    return { person: (team.children || [])[idx] || null, personType: 'child', idx };
+  }
+  return { person: null, personType: null };
+}
+
+function buildPersonDetailHTML(person, personType, personId) {
+  const isPartner = personType === 'partner';
+  const lines = [];
+
+  if (isPartner) {
+    lines.push(buildPersonEditableLine(personId, 'name',               'Name',               person.name               || ''));
+    lines.push(buildPersonEditableLine(personId, 'pronoun',            'Pronoun',             person.pronoun            || ''));
+    lines.push(buildPersonEditableLine(personId, 'birthday',           'Birthday',            person.birthday           || ''));
+    lines.push(buildPersonEditableLine(personId, 'birth_year',         'Birth year',          person.birth_year         ? String(person.birth_year) : ''));
+    lines.push(buildPersonEditableLine(personId, 'profession',         'Profession',          person.profession         || ''));
+    lines.push(buildPersonEditableLine(personId, 'love_language',      'Love language',       person.love_language      ? loveLangLabelLocal(person.love_language) : ''));
+    lines.push(buildPersonEditableLine(personId, 'relationship_state', 'Relationship',        person.relationship_state || ''));
+    lines.push(buildPersonEditableLine(personId, 'tenure',             'Together',            person.tenure             || ''));
+    lines.push(buildPersonEditableLine(personId, 'works',              'Works',               person.works              || ''));
+  } else {
+    lines.push(buildPersonEditableLine(personId, 'name',    'Name',    person.name    || ''));
+    lines.push(buildPersonEditableLine(personId, 'pronoun', 'Pronoun', person.pronoun || ''));
+    lines.push(buildPersonEditableLine(personId, 'age',     'Age',     person.age     ? String(person.age) : ''));
+    lines.push(buildPersonEditableLine(personId, 'birthday','Birthday',person.birthday|| ''));
+    lines.push(buildPersonEditableLine(personId, 'whose',   'Whose',   person.whose   || ''));
+  }
+
+  return `
+    <div style="margin-bottom:8px;">
+      ${lines.join('')}
+    </div>
+  `;
+}
+
+function buildPersonEditableLine(personId, field, label, value) {
+  const displayVal = value || '<span style="color:rgba(240,235,218,0.18);">—</span>';
+  return `
+    <div class="person-editable-line"
+      data-person-id="${personId}" data-field="${field}" style="
+      padding:11px 0;
+      border-bottom:0.5px solid rgba(240,235,218,0.05);
+      cursor:text;
+    ">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+        color:rgba(240,235,218,0.22);margin-bottom:4px;
+      ">${label}</div>
+      <div class="person-editable-value" style="
+        font-family:var(--font-sans);font-weight:300;
+        font-size:13px;letter-spacing:0.03em;
+        color:rgba(240,235,218,0.75);line-height:1.4;
+        min-height:18px;
+      ">${displayVal}</div>
+    </div>
+  `;
+}
+
+function loveLangLabelLocal(id) {
+  const map = {
+    words_of_affirmation: 'Words of affirmation',
+    acts_of_service:      'Acts of service',
+    receiving_gifts:      'Receiving gifts',
+    quality_time:         'Quality time',
+    physical_touch:       'Physical touch',
+  };
+  return map[id] || id;
+}
+
+function savePersonField(personId, field, value) {
+  const team = store.get('team') || {};
+
+  if (personId === 'partner') {
+    team.partner = team.partner || {};
+    if (field === 'birth_year') team.partner.birth_year = parseInt(value, 10) || null;
+    else team.partner[field] = value;
+  } else if (personId.startsWith('child_')) {
+    const idx = parseInt(personId.replace('child_', ''), 10);
+    team.children = team.children || [];
+    team.children[idx] = team.children[idx] || {};
+    if (field === 'age') team.children[idx].age = parseInt(value, 10) || null;
+    else team.children[idx][field] = value;
+  }
+
+  store.set('team', team);
+}
+
+// ---------------------------------------------------------------------------
+// MAINTENANCE DETAIL — Full task record with tap-to-edit
+// Opens when user taps a maintenance task row in the brief.
+// ≤4 meaningful fields — editable here, no sub-cascade needed.
+// ---------------------------------------------------------------------------
+
+const maintenanceDetailRenderer = {
+
+  async resolve(context, _preference) {
+    return { routes: [], route: 'detail' };
+  },
+
+  async buildRoute(_route, context) {
+    const tasks = store.get('maintenance_tasks') || [];
+    const task  = tasks.find(t => t.id === context.task_id);
+    if (!task) return buildErrorHTML();
+    return buildMaintenanceDetailHTML(task);
+  },
+
+  complete(context, _route, _update) {
+    logCascadeComplete('maintenance_detail', context.task_id, 'viewed');
+  },
+};
+
+function buildMaintenanceDetailHTML(task) {
+  const lines = [
+    buildTaskEditableLine(task.id, 'label',          'Task',           task.label           || ''),
+    buildTaskEditableLine(task.id, 'interval_label',  'Interval',       task.interval_label  || ''),
+    buildTaskEditableLine(task.id, 'interval_days',   'Interval (days)',task.interval_days   ? String(task.interval_days) : ''),
+    buildTaskEditableLine(task.id, 'last_done',       'Last done',      task.last_done       || '', 'date'),
+    buildTaskEditableLine(task.id, 'next_due',        'Next due',       task.next_due        || '', 'date'),
+    buildTaskEditableLine(task.id, 'notes',           'Notes',          task.notes           || ''),
+    buildTaskEditableLine(task.id, 'tier',            'Tier',           task.tier            || 'caution'),
+  ].join('');
+
+  return `
+    <div style="margin-bottom:8px;">${lines}</div>
+    <div style="margin-top:24px;display:flex;flex-wrap:wrap;">
+      ${buildDoneButton('Mark done')}
+      <button id="task-delete" data-task-id="${task.id}" style="
+        margin-left:16px;margin-top:28px;
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+        color:rgba(240,235,218,0.2);cursor:pointer;transition:color 0.2s ease;
+      "
+      onmouseenter="this.style.color='rgba(240,235,218,0.5)'"
+      onmouseleave="this.style.color='rgba(240,235,218,0.2)'"
+      >remove task</button>
+    </div>
+  `;
+}
+
+function buildTaskEditableLine(taskId, field, label, value, type = 'text') {
+  const displayVal = value || '<span style="color:rgba(240,235,218,0.18);">—</span>';
+  return `
+    <div class="task-editable-line"
+      data-task-id="${taskId}" data-field="${field}" data-type="${type}" style="
+      padding:11px 0;
+      border-bottom:0.5px solid rgba(240,235,218,0.05);
+      cursor:text;
+    ">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+        color:rgba(240,235,218,0.22);margin-bottom:4px;
+      ">${label}</div>
+      <div class="task-editable-value" style="
+        font-family:var(--font-sans);font-weight:300;
+        font-size:13px;letter-spacing:0.03em;
+        color:rgba(240,235,218,0.75);min-height:18px;
+      ">${displayVal}</div>
+    </div>
+  `;
+}
+
+function saveTaskField(taskId, field, value) {
+  const tasks = store.get('maintenance_tasks') || [];
+  const idx   = tasks.findIndex(t => t.id === taskId);
+  if (idx < 0) return;
+  if (field === 'interval_days') tasks[idx][field] = parseInt(value, 10) || null;
+  else tasks[idx][field] = value || null;
+  store.set('maintenance_tasks', tasks);
+}
+
+
+// ---------------------------------------------------------------------------
 // RENDERER REGISTRY
 // ---------------------------------------------------------------------------
 
@@ -854,6 +2787,12 @@ const RENDERERS = {
   vehicle_registration: vehicleRegistrationRenderer,
   vehicle_service:      vehicleServiceRenderer,
   medical_appointment:  medicalAppointmentRenderer,
+  vehicle_intake:       vehicleIntakeRenderer,
+  vehicle_detail:       vehicleDetailRenderer,
+  maintenance_task:     maintenanceTaskRenderer,
+  maintenance_intake:   maintenanceIntakeRenderer,
+  person_detail:        personDetailRenderer,
+  maintenance_detail:   maintenanceDetailRenderer,
 };
 
 // ---------------------------------------------------------------------------

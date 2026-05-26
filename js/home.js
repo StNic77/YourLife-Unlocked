@@ -44,8 +44,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'atak',
       label: 'Brief',
-      x: 48, y: 46,   // ATAK on dock — centre of device
-      r: 44,
+      x: 49, y: 43,   // ATAK on dock — centre of device
+      r: 47,
       primary: true,
       urgent: true,
       domain: 'brief',
@@ -54,7 +54,7 @@ const HOTSPOT_MAPS = {
       id: 'peltors',
       label: 'Alerts',
       x: 49, y: 21,   // Peltors on hook — upper centre
-      r: 36,
+      r: 45,
       primary: false,
       urgent: true,
       domain: 'alerts',
@@ -62,8 +62,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'keys',
       label: 'Vehicles',
-      x: 65, y: 45,   // Keys — right of ATAK
-      r: 36,
+      x: 65, y: 48,   // Keys — right of ATAK
+      r: 32,
       primary: false,
       urgent: true,
       domain: 'vehicles',
@@ -71,8 +71,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'calendar',
       label: 'Calendar',
-      x: 87, y: 30,   // Calendar — upper right
-      r: 38,
+      x: 90, y: 28,   // Calendar — upper right
+      r: 45,
       primary: false,
       urgent: true,
       domain: 'calendar',
@@ -80,8 +80,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'notebook',
       label: 'Capture',
-      x: 56, y: 87,   // Notebook on bench — foreground lower left
-      r: 40,
+      x: 65, y: 85,   // Notebook on bench — foreground lower left
+      r: 45,
       primary: false,
       urgent: false,
       domain: 'capture',
@@ -89,8 +89,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'maintenance',
       label: 'Maintenance',
-      x: 68, y: 74,   // Maintenance tray — lower right
-      r: 32,
+      x: 70, y: 70,   // Maintenance tray — lower right
+      r: 44,
       primary: false,
       urgent: true,
       domain: 'maintenance',
@@ -98,8 +98,8 @@ const HOTSPOT_MAPS = {
     {
       id: 'workout',
       label: 'Health',
-      x: 21, y: 81,   // Footwear — lower left shelf
-      r: 32,
+      x: 21, y: 77,   // Footwear — lower left shelf
+      r: 44,
       primary: false,
       urgent: false,
       domain: 'health',
@@ -208,6 +208,36 @@ function getUrgentItems() {
     });
   }
 
+  // Maintenance tasks — derived from maintenance_tasks store
+  // Overdue or due within 14 days surface as urgent items
+  const tasks = store.get('maintenance_tasks') || [];
+  const today = new Date();
+  tasks.forEach(t => {
+    const id = `maintenance_task_${t.id}`;
+    if (storedIds.has(id)) return;
+    if (!t.next_due) return;
+    const due  = new Date(t.next_due);
+    const days = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
+    if (days > 14) return; // not urgent yet
+    const overdue = days < 0;
+    derived.push({
+      id,
+      object: 'maintenance',
+      domain: 'maintenance',
+      title: t.label,
+      body: overdue
+        ? `Overdue by ${Math.abs(days)} days`
+        : days === 0 ? 'Due today' : `Due in ${days} days`,
+      snoozable: !overdue,
+      snoozed_until: null,
+      tier: overdue ? 'warning' : 'caution',
+      cascade: {
+        type: 'maintenance_task',
+        context: { task_id: t.id },
+      },
+    });
+  });
+
   // Stored items first (user-facing priority), then derived
   return [...active, ...derived];
 }
@@ -295,6 +325,7 @@ function getDomainBrief(domain, world) {
             v.service_due         ? `Service: ${formatDate(v.service_due)}` : null,
           ].filter(Boolean).join(' · ') || 'No dates on file',
           urgent: isVehicleUrgent(v),
+          vehicle_id: v.id,
         })) : [{
           label: 'No vehicles on file',
           value: 'Add your vehicles and I\'ll track what needs attention',
@@ -335,17 +366,43 @@ function getDomainBrief(domain, world) {
         cta_action: 'add_health',
       };
 
-    case 'maintenance':
+    case 'maintenance': {
+      const tasks = store.get('maintenance_tasks') || [];
+      const today = new Date();
+      const activeTasks = tasks
+        .map(t => {
+          const due = t.next_due ? new Date(t.next_due) : null;
+          const days = due ? Math.ceil((due - today) / (1000 * 60 * 60 * 24)) : null;
+          const overdue = days !== null && days < 0;
+          const urgent  = days !== null && days <= 14;
+          return { ...t, days, overdue, urgent };
+        })
+        .sort((a, b) => {
+          if (a.overdue && !b.overdue) return -1;
+          if (!a.overdue && b.overdue) return 1;
+          return (a.days ?? 999) - (b.days ?? 999);
+        });
+
       return {
         title: 'Maintenance',
-        sections: [{
-          label: 'Nothing due',
+        sections: activeTasks.length ? activeTasks.map(t => ({
+          label: t.label,
+          value: t.overdue
+            ? `Overdue by ${Math.abs(t.days)} days`
+            : t.days !== null
+              ? t.days === 0 ? 'Due today' : `Due in ${t.days} days`
+              : t.interval_label || 'No due date set',
+          urgent: t.overdue || t.urgent,
+          task_id: t.id,
+        })) : [{
+          label: 'Nothing scheduled',
           value: 'Add recurring tasks and I\'ll flag them before they matter',
           urgent: false,
         }],
         cta: 'Add a task',
         cta_action: 'add_maintenance',
       };
+    }
 
     case 'capture':
       return {
@@ -386,7 +443,6 @@ function buildPrimaryBrief(team, onboard, world) {
   const teamItems = [];
 
   if (team?.partner?.name) {
-    // Look for partner's birthday in urgent items — if found, surface it here
     const partnerBday = urgent.find(i => i.id === 'partner_birthday');
     teamItems.push({
       label: team.partner.name,
@@ -394,13 +450,14 @@ function buildPrimaryBrief(team, onboard, world) {
         ? `Birthday ${partnerBday.body.toLowerCase()}`
         : team.partner.love_language
           ? `Love language: ${loveLangLabel(team.partner.love_language)}`
-          : '',
+          : team.partner.profession || '',
       urgent: !!partnerBday,
+      person_id: 'partner',
     });
   }
 
   if (Array.isArray(team?.children) && team.children.length) {
-    team.children.forEach(child => {
+    team.children.forEach((child, idx) => {
       const childBday = urgent.find(i => i.id === `child_birthday_${child.name}`);
       teamItems.push({
         label: child.name,
@@ -408,6 +465,7 @@ function buildPrimaryBrief(team, onboard, world) {
           ? `Birthday ${childBday.body.toLowerCase()}`
           : child.age ? `${child.age} years old` : '',
         urgent: !!childBday,
+        person_id: `child_${idx}`,
       });
     });
   }
@@ -448,6 +506,16 @@ function buildPrimaryBrief(team, onboard, world) {
         });
       }
     });
+  });
+
+  // Maintenance tasks 15–30 days out
+  const mainTasks = store.get('maintenance_tasks') || [];
+  mainTasks.forEach(t => {
+    if (!t.next_due) return;
+    const days = Math.ceil((new Date(t.next_due) - new Date()) / (1000 * 60 * 60 * 24));
+    if (days > 14 && days <= 30) {
+      horizonItems.push({ label: t.label, value: `${days} days`, urgent: false });
+    }
   });
 
   // Children birthdays 15–30 days out
@@ -623,10 +691,16 @@ export function createHome(world) {
 
   function buildUrgentByObject(items, spots) {
     const map = {};
-    spots.forEach(s => { map[s.id] = []; });
+    spots.forEach(s => { map[s.id] = { items: [], tier: null }; });
     items.forEach(item => {
       const spot = spots.find(s => s.domain === item.domain || s.id === item.object);
-      if (spot) map[spot.id].push(item);
+      if (!spot) return;
+      map[spot.id].items.push(item);
+      // Escalate tier — warning beats caution
+      const itemTier = item.tier || 'caution';
+      if (map[spot.id].tier === null || itemTier === 'warning') {
+        map[spot.id].tier = itemTier;
+      }
     });
     return map;
   }
@@ -636,7 +710,9 @@ export function createHome(world) {
     if (!layer) return;
 
     hotspots.forEach(spot => {
-      const hasUrgent = urgentByObj[spot.id]?.length > 0;
+      const spotUrgent = urgentByObj[spot.id];
+      const hasUrgent  = spotUrgent?.items?.length > 0;
+      const urgentTier  = spotUrgent?.tier || 'caution';
       const btn = document.createElement('button');
 
       const devStyle = DEV_HOTSPOTS ? `
@@ -673,27 +749,34 @@ export function createHome(world) {
         btn.appendChild(label);
       }
 
-      // Urgent ring on the object
+      // Urgent ring on the object — tier-aware
       if (hasUrgent) {
+        const isWarning    = urgentTier === 'warning';
+        const ringColor    = isWarning ? 'rgba(220,60,60,0.75)'   : 'rgba(210,160,60,0.7)';
+        const dotColor     = isWarning ? 'rgba(220,60,60,0.95)'   : 'rgba(210,160,60,0.9)';
+        const pulseAnim    = isWarning ? 'warningPulse 1.6s ease-in-out infinite' : 'urgentPulse 2.5s ease-in-out infinite';
+        const glowColor    = isWarning ? 'rgba(220,60,60,0.2)'    : 'rgba(210,160,60,0.15)';
+        const glowRing     = isWarning ? 'rgba(220,60,60,0.35)'   : 'rgba(210,160,60,0.3)';
+
         btn.innerHTML = `
           <span style="
             position:absolute;inset:0;border-radius:50%;
-            border:1.5px solid rgba(210,160,60,0.7);
-            animation:urgentPulse 2.5s ease-in-out infinite;
+            border:1.5px solid ${ringColor};
+            animation:${pulseAnim};
           "></span>
           <span style="
             position:absolute;top:4px;right:4px;
             width:8px;height:8px;border-radius:50%;
-            background:rgba(210,160,60,0.9);
+            background:${dotColor};
+            ${isWarning ? 'animation:warningDotPulse 1.6s ease-in-out infinite;' : ''}
           "></span>
         `;
-      }
 
-      // Primary object gets a subtle glow
-      if (spot.primary) {
-        btn.style.boxShadow = hasUrgent
-          ? '0 0 0 1px rgba(210,160,60,0.3), 0 0 24px rgba(210,160,60,0.15)'
-          : '0 0 0 1px rgba(240,235,218,0.12), 0 0 20px rgba(240,235,218,0.06)';
+        if (spot.primary) {
+          btn.style.boxShadow = `0 0 0 1px ${glowRing}, 0 0 24px ${glowColor}`;
+        }
+      } else if (spot.primary) {
+        btn.style.boxShadow = '0 0 0 1px rgba(240,235,218,0.12), 0 0 20px rgba(240,235,218,0.06)';
       }
 
       btn.addEventListener('pointerdown', () => {
@@ -876,6 +959,7 @@ export function createHome(world) {
 
     const inputHTML = content.input ? `
       <div style="margin-top:20px;">
+        <style>#capture-input::placeholder { color: rgba(240,235,218,0.25); }</style>
         <textarea id="capture-input" rows="3" placeholder="${content.placeholder || ''}" style="
           width:100%;box-sizing:border-box;
           background:rgba(240,235,218,0.05);
@@ -885,7 +969,7 @@ export function createHome(world) {
           font-size:13px;letter-spacing:0.04em;
           color:rgba(240,235,218,0.85);
           resize:none;outline:none;
-        ">::placeholder { color: rgba(240,235,218,0.25); }</textarea>
+        "></textarea>
         <button id="capture-save" style="
           margin-top:10px;
           padding:12px 28px;
@@ -976,6 +1060,9 @@ export function createHome(world) {
       : 'border-left:2px solid rgba(240,235,218,0.08);padding-left:12px;';
 
     const hasCascade = !!(item.cascade_type && item.item_id);
+    const hasVehicle = !!item.vehicle_id;  // tappable vehicle row → detail cascade
+    const hasPerson  = !!item.person_id;   // tappable person row → person detail cascade
+    const hasTask    = !!item.task_id && !hasCascade; // tappable maintenance task row → inline edit
 
     const snoozeBtn = (item.urgent && item.snoozable && item.item_id) ? `
       <button class="snooze-btn" data-id="${item.item_id}" style="
@@ -1011,13 +1098,19 @@ export function createHome(world) {
       ">handle →</button>
     ` : '';
 
-    const labelStyle = hasCascade
+    const labelStyle = (hasCascade || hasVehicle || hasPerson || hasTask)
       ? `cursor:pointer;transition:color 0.15s ease;`
       : '';
 
     const labelAttrs = hasCascade
       ? `class="cascade-label" data-id="${item.item_id}"`
-      : '';
+      : hasVehicle
+        ? `class="vehicle-detail-label" data-vehicle-id="${item.vehicle_id}"`
+        : hasPerson
+          ? `class="person-detail-label" data-person-id="${item.person_id}"`
+          : hasTask
+            ? `class="task-detail-label" data-task-id="${item.task_id}"`
+            : '';
 
     return `
       <div style="
@@ -1032,7 +1125,7 @@ export function createHome(world) {
             color:${item.urgent ? 'rgba(240,235,218,0.9)' : 'rgba(240,235,218,0.65)'};
             margin-bottom:${item.value ? '4px' : '0'};
             ${labelStyle}
-          ">${item.label}</div>
+          ">${item.label}${(hasVehicle || hasPerson || hasTask) ? '<span style="font-size:10px;letter-spacing:0.15em;color:rgba(240,235,218,0.2);margin-left:8px;">view →</span>' : ''}</div>
           ${item.value ? `<div style="
             font-family:var(--font-sans);font-weight:200;
             font-size:11px;letter-spacing:0.06em;
@@ -1121,7 +1214,151 @@ export function createHome(world) {
       label.addEventListener('mouseleave', () => label.style.color = 'rgba(240,235,218,0.9)');
     });
 
-    // CTA buttons — stubbed, wired in future sessions
+    // Person detail — opens when user taps a partner or child row
+    const openPersonDetail = (personId) => {
+      const team = store.get('team') || {};
+      let person, personType;
+
+      if (personId === 'partner') {
+        person     = team.partner;
+        personType = 'partner';
+      } else if (personId.startsWith('child_')) {
+        const idx  = parseInt(personId.replace('child_', ''), 10);
+        person     = (team.children || [])[idx];
+        personType = 'child';
+      }
+      if (!person) return;
+
+      const detailItem = {
+        id:    `person_detail_${personId}`,
+        title: person.name || 'Person',
+        body:  personType === 'partner' ? person.profession || 'Partner' : `${person.age ? person.age + ' years old' : ''}${person.whose ? ' · ' + person.whose : ''}`,
+        cascade: {
+          type:    'person_detail',
+          context: { person_id: personId },
+        },
+      };
+
+      const cascadePanel = createCascade({
+        item: detailItem,
+        onBack: () => {},
+        onComplete: () => { closeBrief(); },
+      });
+      if (cascadePanel) cascadePanel.open(el);
+    };
+
+    panel.querySelectorAll('.person-detail-label').forEach(label => {
+      label.addEventListener('click',      () => openPersonDetail(label.dataset.personId));
+      label.addEventListener('mouseenter', () => label.style.color = 'rgba(210,160,60,0.9)');
+      label.addEventListener('mouseleave', () => label.style.color = label.closest('[style*="0.9"]') ? 'rgba(240,235,218,0.9)' : 'rgba(240,235,218,0.65)');
+    });
+
+    // Vehicle detail — opens when user taps a vehicle row
+    const openVehicleDetail = (vehicleId) => {
+      const vehicles = store.get('vehicles') || [];
+      const vehicle  = vehicles.find(v => v.id === vehicleId);
+      if (!vehicle) return;
+
+      const detailItem = {
+        id: `vehicle_detail_${vehicleId}`,
+        title: vehicle.name || 'Vehicle',
+        body: vehicle.mileage_at_entry
+          ? `${parseInt(vehicle.mileage_at_entry).toLocaleString()} km at entry`
+          : 'Full record',
+        cascade: {
+          type: 'vehicle_detail',
+          context: { vehicle_id: vehicleId },
+        },
+      };
+      const cascadePanel = createCascade({
+        item: detailItem,
+        onBack: () => {},
+        onComplete: () => { closeBrief(); },
+      });
+      if (cascadePanel) cascadePanel.open(el);
+    };
+
+    panel.querySelectorAll('.vehicle-detail-label').forEach(label => {
+      label.addEventListener('click',      () => openVehicleDetail(label.dataset.vehicleId));
+      label.addEventListener('mouseenter', () => label.style.color = 'rgba(210,160,60,0.9)');
+      label.addEventListener('mouseleave', () => label.style.color = 'rgba(240,235,218,0.65)');
+    });
+
+    // Task detail — opens when user taps a maintenance task row
+    const openTaskDetail = (taskId) => {
+      const tasks = store.get('maintenance_tasks') || [];
+      const task  = tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      const detailItem = {
+        id:    `task_detail_${taskId}`,
+        title: task.label,
+        body:  task.interval_label || '',
+        cascade: {
+          type:    'maintenance_detail',
+          context: { task_id: taskId },
+        },
+      };
+      const cascadePanel = createCascade({
+        item: detailItem,
+        onBack: () => {},
+        onComplete: () => { closeBrief(); },
+      });
+      if (cascadePanel) cascadePanel.open(el);
+    };
+
+    panel.querySelectorAll('.task-detail-label').forEach(label => {
+      label.addEventListener('click',      () => openTaskDetail(label.dataset.taskId));
+      label.addEventListener('mouseenter', () => label.style.color = 'rgba(210,160,60,0.9)');
+      label.addEventListener('mouseleave', () => label.style.color = 'rgba(240,235,218,0.65)');
+    });
+
+    // Maintenance intake — opens when user taps "Add a task" CTA
+    const openMaintenanceIntake = () => {
+      const intakeItem = {
+        id: 'maintenance_intake_new',
+        title: 'Add a task',
+        body: "I'll flag it before it matters",
+        cascade: {
+          type: 'maintenance_intake',
+          context: {},
+        },
+      };
+      const cascadePanel = createCascade({
+        item: intakeItem,
+        onBack: () => {},
+        onComplete: () => { closeBrief(); },
+      });
+      if (cascadePanel) cascadePanel.open(el);
+    };
+
+    // Vehicle intake — opens when user taps "Add a vehicle" CTA
+    const openVehicleIntake = () => {
+      const intakeItem = {
+        id: 'vehicle_intake_new',
+        title: 'Add a vehicle',
+        body: "I'll track what needs attention",
+        cascade: {
+          type: 'vehicle_intake',
+          context: {},
+        },
+      };
+      const cascadePanel = createCascade({
+        item: intakeItem,
+        onBack: () => {},
+        onComplete: () => {
+          closeBrief();
+          // Re-open vehicles brief so user sees their new vehicle
+          setTimeout(() => {
+            const spot = HOTSPOT_MAPS[world.id]?.find(h => h.domain === 'vehicles');
+            if (spot) openBrief(spot);
+          }, 400);
+        },
+      });
+      if (cascadePanel) cascadePanel.open(el);
+    };
+
+    // CTA buttons
     panel.querySelectorAll('.brief-cta').forEach(btn => {
       btn.addEventListener('mouseenter', () => {
         btn.style.color        = 'rgba(240,235,218,0.85)';
@@ -1132,8 +1369,14 @@ export function createHome(world) {
         btn.style.borderColor  = 'rgba(240,235,218,0.25)';
       });
       btn.addEventListener('click', () => {
-        console.log(`CTA action: ${btn.dataset.action}`);
-        // Future: route to add_date, add_vehicle, etc.
+        const action = btn.dataset.action;
+        if (action === 'add_vehicle') {
+          openVehicleIntake();
+        } else if (action === 'add_maintenance') {
+          openMaintenanceIntake();
+        } else {
+          console.log(`CTA action: ${action}`);
+        }
       });
     });
 
@@ -1161,6 +1404,14 @@ export function createHome(world) {
       @keyframes urgentPulse {
         0%, 100% { opacity: 0.7; transform: scale(1); }
         50%       { opacity: 0.3; transform: scale(1.12); }
+      }
+      @keyframes warningPulse {
+        0%, 100% { opacity: 0.85; transform: scale(1); }
+        50%       { opacity: 0.35; transform: scale(1.15); }
+      }
+      @keyframes warningDotPulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50%       { opacity: 0.5; transform: scale(0.85); }
       }
       @keyframes fadeIn {
         from { opacity: 0; }

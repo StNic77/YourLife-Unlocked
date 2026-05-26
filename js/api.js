@@ -301,6 +301,53 @@ Return JSON: { "city": "string", "province_code": "string", "province_name": "st
     return safeParseJSON(raw);
   },
 
+  // ---------------------------------------------------------------------------
+  // getVehicleSchedule — called during vehicle intake after mileage is entered
+  // Returns maintenance schedule, next oil change window, and upcoming items
+  // for the given vehicle at current mileage.
+  // AI contract: structured JSON only — no preamble, no explanation.
+  // ---------------------------------------------------------------------------
+
+  async getVehicleSchedule({ year, make, model, variant, mileage, last_oil_date, last_oil_mileage, interval_km }) {
+    const system = `You are a vehicle maintenance expert and data retrieval service for a personal life app.
+Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
+You have accurate knowledge of manufacturer maintenance schedules for specific makes and models.
+High-mileage vehicles (over 200,000 km) should receive appropriate flags where relevant.
+For Canadian users: return distances in km, not miles.`;
+
+    const vehicleDesc = [year, make, model, variant].filter(Boolean).join(' ') || 'unknown vehicle';
+
+    const messages = [{
+      role: 'user',
+      content: `Vehicle: ${vehicleDesc}.
+Current mileage: ${mileage} km.
+Last oil change: ${last_oil_date || 'unknown'} at ${last_oil_mileage || 'unknown'} km.
+Preferred oil change interval: ${interval_km || 8000} km.
+
+Return JSON with these fields (use null for unknown values):
+{
+  "next_oil_change_km": number,
+  "next_oil_change_date": "Month YYYY",
+  "oil_spec": "string — e.g. 0W-20 full synthetic",
+  "upcoming_items": [
+    { "id": "string", "label": "string", "due_km": number, "urgency": "now|soon|watch" }
+  ],
+  "notes": "string or null — high-mileage flags, known issues for this vehicle",
+  "vehicle_facts": {
+    "timing_system": "string — timing chain (maintenance-free) or timing belt with interval",
+    "serpentine_belt": "string — quantity and replacement interval in km",
+    "spark_plugs": "string — type, gap, replacement interval in km",
+    "transmission_fluid": "string — fluid type and change interval",
+    "coolant": "string — type and flush interval",
+    "notes": "string or null — known issues or service bulletins for this exact engine and year"
+  }
+}`,
+    }];
+
+    const raw = await this.send({ system, messages, maxTokens: 1200, model: MODEL_FAST });
+    return safeParseJSON(raw);
+  },
+
   async getTeamReflection({ type, partnerName, partnerPronoun, tenure, state, works,
     profession, birthday, love_language }) {
 

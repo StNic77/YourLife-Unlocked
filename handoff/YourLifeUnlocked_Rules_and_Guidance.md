@@ -8,32 +8,6 @@
 
 ---
 
-## PART 0 — SESSION CHECK-IN PROTOCOL
-*(Session 15 — collaborator framing added Session 16)*
-
-This protocol runs at the start of every session. It is not a status report. It is a moment of genuine collaboration between Shawn and Claude before anything gets built.
-
-**Trigger phrase:** `session [N] begins, let's do a check-in`
-
-**The check-in structure:**
-
-1. **Read the last handoff** — Claude reads the most recent session handoff document in full before responding.
-2. **Answer four questions:**
-   - Is there anything from the last session that didn't hold up on reflection?
-   - Did any parked items move forward since we last spoke?
-   - Is the session agenda still right, or has something shifted?
-   - Is there anything to clear before we begin?
-3. **Weigh what we're about to do against the founding principles** — if something in the agenda conflicts with a principle, the conversation happens before the code gets written.
-4. **State the session intent** in one or two sentences.
-
-**The collaborator framing:**
-
-Claude is not an executor. It is a collaborator. The check-in is where that collaboration is exercised — not just confirming a to-do list, but genuinely weighing whether what we're about to build is right, whether the principles hold, and whether there is a better way to get there. If something doesn't hold up against the founding principles, Claude says so before work begins — not after.
-
-This document is the authority. If the session agenda conflicts with anything here, the document wins and the conversation happens first.
-
----
-
 ## PART 1 — FOUNDING PRINCIPLES
 
 These are not preferences. They are guardrails. Every feature, every prompt, every notification, every line of onboarding copy gets measured against all of these before it is built.
@@ -183,46 +157,92 @@ The app speaks to everyone. The same event — an anniversary, a difficult date,
 
 ---
 
-### 2.7 The Whole Battlespace Rule
-*(Session 15)*
-
-> **The ATAK monitors everything, regardless of where it lives or whether it has been categorised. Relevance is determined by time, context, and what else the app knows — not by how the user filed it.**
-
-The ATAK is not a dashboard of what the user entered. It is an intelligence synthesis layer — the output of the All Source Intelligence Cell (Fusion Cell). It sees across every domain. A health entry the user never categorised becomes a surfaced event at the right moment. An anniversary in the calendar connects to a love language on file. The user never filed them together. The ATAK does.
-
-**What this means in practice:**
-- An MRI logged in the calendar routes to health. Two weeks out, the ATAK surfaces it as a health event with time pressure — regardless of how it was filed.
-- A partner's birthday in 11 days, plus a love language on file, plus nothing logged as a gift, equals a surfaced priority — without being asked.
-- No entry sits silently in one domain if it has relevance in another.
-
-**Check:** Does this feature require the user to categorise correctly in order to be served correctly? If yes, it is broken. Fix it before it ships.
-
----
-
-### 2.8 The Minimum Viable Question Rule
-*(Session 15)*
-
-> **Before any cascade question fires, the app asks itself: do I already know this, or can I infer it from existing data, cross-domain context, or AI inference? If yes, it does not ask. The cascade earns every question it fires.**
-
-The intake cascade is not a form. It is a conversation that stops the moment it has enough. Every question has to earn its place. The intelligence picture fills in over time and the cascade gets shorter as it does.
-
-**Cross-domain inference — what the app already knows:**
-- Location already stored → do not ask where the nearest service centre is
-- Vehicle make/model already logged → do not ask again when logging a service
-- Partner on file → do not ask who's coming to a restaurant booking
-- Anniversary in the calendar → do not ask the partner's name again
-
-**The cascade shortens with time:**
-A new vehicle might generate seven questions. The same vehicle a year later, two. The cascade is not a fixed intake form — it is a conversation shaped by what is already known.
-
-**Check:** Before building any cascade question — can the app answer this itself from existing data, cross-domain context, or AI inference? If yes, the question does not ship.
-
----
-
-### 2.9 Counter-Cultural Where It Matters
+### 2.7 Counter-Cultural Where It Matters
 *(Session 1)*
 
 The app takes a deliberate stance against toxic relationship content. It offers honest, grounded relational advice across all seasons. It does this without being preachy — through helpfulness, not lectures. The Trojan horse principle: meet the user in their world completely, without judgment. The intelligence delivered in that language quietly teaches what they need to learn. No confrontation. No lecture. Just tending.
+
+---
+
+## PART 2 — ARCHITECTURE PRINCIPLES (CONTINUED)
+
+---
+
+### 2.10 The Alert Architecture — Master Warning and Master Caution
+*(Session 18)*
+
+> **Alerts alert. They do not resolve. The cascade resolves.**
+
+Alerts are a warning layer, not a domain. They surface in two places: the alerts grab and go (peltors in the Operator world) and the ATAK brief. They never have their own resolution flow. Tapping an alert routes directly to the owning cascade — registration, medical, insurance, maintenance — where the user handles it.
+
+**Two tiers, like a real warning panel:**
+
+**Master Warning** — deal with this now. No or severely limited snooze.
+- Registration expired
+- Insurance lapsed
+- Mortgage renewal in critical window
+- Medical appointment critically overdue
+- Any hard deadline that has passed or is imminent
+
+**Master Caution** — deal with this soon. Snoozable.
+- Service due within 30 days
+- Registration within 30 days
+- Insurance renewal approaching
+- Maintenance flagged and overdue
+- Any soft deadline within the watch window
+
+**The governing logic:**
+- Every urgent item is classified as Warning or Caution at creation
+- The ATAK surfaces both tiers — Warning items listed first, visually distinct
+- Alerts grab and go shows the same stack
+- Snooze is available on Caution items only — Warning items require action or explicit deferral
+- Once handled via cascade, the item is cleared from both surfaces
+
+**Check:** Before classifying any urgent item — is this "deal with this before it deals with you" (Warning) or "deal with this before it becomes a Warning" (Caution)?
+
+---
+
+### 2.11 The Cascade Depth Rule
+*(Session 18)*
+
+> **Depth of cascade matches complexity of object. Nothing is locked — but not everything needs its own room.**
+
+Every piece of data the app holds must be reachable and correctable. The question is where that correction happens.
+
+**The rule:**
+- **More than four fields** → the object earns a full detail cascade (tap-to-edit within the cascade)
+- **Four fields or fewer** → editable directly within the grab and go brief
+
+**Applied:**
+- Vehicle → full detail cascade (year, make, mileage, service history, tires, watch list, facts…)
+- Partner → detail cascade (name, pronoun, birthday, love language, relationship state)
+- Child → detail cascade (name, pronoun, age, birthday, whose)
+- Maintenance task → editable in the brief (label, interval, last done, next due)
+- Capture note → editable in the brief (text only)
+- Health appointment → editable in the brief
+
+**Check:** Before building a detail cascade — does this object have more than four meaningful fields? If yes, cascade. If no, make it editable where it already appears.
+
+---
+
+### 2.12 The ATAK Authority Rule
+*(Session 18)*
+
+> **The ATAK is the fusion cell output. Every item it surfaces is a door. Tap it, go to the domain.**
+
+The ATAK is an intelligence synthesis layer — it sees across domains, monitors the whole battlespace, and surfaces what matters without being asked. It is not a list of what the user entered. It is read-only. Tapping anything in the ATAK takes you to the owning domain — where the richer information lives and where editing happens.
+
+**Applied:**
+- Tap a person → Team/Family domain
+- Tap a vehicle item → Vehicles domain
+- Tap a maintenance item → Maintenance domain
+- Tap an urgent item → the cascade for that item, opened from within the domain
+
+**The domain has the depth. The domain has the editability. The ATAK has the picture.**
+
+**Implication for build:** Person taps in the ATAK brief are currently a temporary shortcut — they open edit cascades directly. Before beta, all ATAK taps route to the owning domain first.
+
+**Check:** Before wiring any tap in the ATAK — does it route to a domain, or does it try to do the domain's job?
 
 ---
 
@@ -418,7 +438,8 @@ The Meadow person will tap *"Something I've been avoiding"* and for the first ti
 | Session 3 | Tending Philosophy, analogy system, Trojan horse principle, UI as environment |
 | Session 4 | Seasonal Intelligence Principle, eight full analogy profiles with shadows, core promise |
 | Session 5 | Cheesy Hook Check, SMESC framework, onboarding arc, hidden tile rule, accessibility rule, problem space framework, permanent record entries |
-| Session 15–16 | Part 0 added — Session Check-In Protocol with collaborator framing; 2.7 Whole Battlespace Rule; 2.8 Minimum Viable Question Rule; 2.9 renumbered from 2.7 |
+| Sessions 6–17 | Codebase built — home screen, room system, cascade architecture, ATAK, onboarding, team module, urgent items, dev personas, location module, correction flow, session check-in protocol locked |
+| Session 18 | Alert Architecture locked (2.10). Cascade Depth Rule locked (2.11). ATAK Authority Rule locked (2.12) — brief is read-only, edit happens in domains. Vehicle intake + detail cascades built. HC-6 Maintenance built. Person detail cascade built. Rich dev=shawn environment — full onboarding, real family, real maintenance tasks. Life Events / Conversation-to-Cascade parked. Team/Family domain parked. Person taps in ATAK brief flagged as pre-beta to move to Team/Family domain. |
 
 ---
 

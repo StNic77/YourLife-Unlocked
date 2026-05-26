@@ -49,6 +49,76 @@ function hoursAgo(n) {
   return d.toISOString();
 }
 
+// ---------------------------------------------------------------------------
+// REAL USER DATA — Shawn's actual vehicle, loaded via ?dev=shawn
+// This is not a persona — it is real data from a real person.
+// Use this to test the full intelligence picture against live information.
+// ---------------------------------------------------------------------------
+const SHAWN_VEHICLES = [
+  {
+    id: 'v_shawn_1',
+    name: '2015 Mazda3 Sport',
+    year: '2015',
+    make: 'Mazda',
+    model: 'Mazda3',
+    variant: 'Sport',
+    mileage_at_entry: 267000,
+    mileage_date: '2026-05-25',
+    plate_province: 'BC',
+    preferred_shop: 'Mr. Lube',
+    preferred_interval_km: 8000,
+    vin: null,
+    transmission: 'manual',
+
+    // Service history — three oil changes on file
+    service_history: [
+      { type: 'oil_change', date: '2025-03-21', mileage: 241300, shop: 'Mr. Lube', notes: null },
+      { type: 'oil_change', date: '2025-06-04', mileage: 250810, shop: 'Mr. Lube', notes: 'Cross-Canada drive inflated interval' },
+      { type: 'oil_change', date: '2026-03-10', mileage: 263551, shop: 'Mr. Lube', notes: 'Stretched — acknowledged' },
+    ],
+
+    // Known maintenance history
+    known_history: [
+      { type: 'spark_plugs',        mileage_approx: 240000, date_approx: '2024' },
+      { type: 'serpentine_belt', label: 'Serpentine belts (both)', mileage_approx: 240000, date_approx: '2024', notes: 'AC compressor belt and alternator belt replaced' },
+      { type: 'struts',         mileage_approx: null,   date: '2025-08', notes: 'Struts and sway bar links' },
+      { type: 'brake_caliper',  mileage_approx: null,   date: '2025-09', notes: 'RR caliper — leaky piston replaced' },
+      { type: 'brake_fluid',    mileage_approx: null,   date: '2025-09', notes: 'Full bleed and refill' },
+      { type: 'brakes',         mileage_approx: null,   date: '2024-09', notes: 'New rotors and pads all around' },
+      { type: 'fuel_system',    mileage_approx: null,   date_approx: null, notes: 'Done' },
+    ],
+
+    // Tires
+    tires: {
+      summer: { brand: 'Michelin', season: 3, on: true,  installed: '2026-04-03' },
+      winter: { brand: 'Michelin', season: 4, on: false, notes: 'Still good' },
+    },
+
+    // Vehicle facts — AI-authoritative for this engine
+    // 2015 Mazda3 2.0L Skyactiv-G
+    vehicle_facts: {
+      timing_system:       'Timing chain — maintenance-free for engine life',
+      serpentine_belt:     '2 belts (AC compressor + alternator/power steering) · replace every 100,000–120,000 km or on wear/cracking',
+      spark_plugs:         'NGK ILKAR7L-11 iridium · gap 1.1mm · replace every 100,000–160,000 km',
+      transmission_fluid:  'Manual: Mazda MTF (75W-90 GL-4) · change every 80,000 km or 5 years',
+      coolant:             'Mazda FL-22 long-life coolant · flush every 200,000 km or 10 years (first interval) then every 100,000 km',
+      notes:               'Skyactiv-G 2.0L is reliable at high mileage. Watch for carbon buildup on intake valves after 200,000 km. Throttle body cleaning recommended. PCV valve check at high mileage.',
+    },
+
+    // Pending / watch list
+    watch_list: [
+      { type: 'throttle_body', label: 'Throttle body clean', status: 'not_done' },
+      { type: 'transmission_fluid', label: 'Transmission fluid check', status: 'unknown' },
+    ],
+
+    // Next service — calculated from last oil change + interval
+    // Last: 2026-03-10 @ 263,551km. Interval: 8,000km. Next: ~271,551km
+    service_due: '2026-08-01',   // approximate — late July / early August
+    registration_expiry: null,
+    insurance_expiry: null,
+  },
+];
+
 const PERSONAS = {
 
   single: {
@@ -344,6 +414,188 @@ async function boot() {
   // ?dev=single | ?dev=married | ?dev=blended
   // Loads persona state and skips onboarding entirely.
   const devParam = new URLSearchParams(window.location.search).get('dev');
+
+  // Real user shortcut — loads Shawn's actual data
+  if (devParam === 'shawn') {
+    store.reset();
+
+    store.set('world', 'operator');
+
+    store.set('user', {
+      name:               'Shawn',
+      joined:             isoFromNow(-120),
+      city:               'Comox',
+      province:           'BC',
+      country:            'CA',
+      lat:                49.721,
+      lng:               -124.929,
+      home_lat:           49.721,
+      home_lng:          -124.929,
+      location_confirmed: true,
+      pronouns:           'he/him',
+    });
+
+    store.set('onboarding', {
+      complete:        true,
+      situation:       'in_relationship',
+      mission: [
+        'getting_organized',
+        'working_toward',
+        'relationships',
+        'physical_health',
+        'undealt',
+      ],
+      watch_for: [
+        'things_slipping_through',
+        'patterns_missing',
+        'bad_timing',
+        'blind_spots',
+      ],
+      service_support: ['military'],
+    });
+
+    store.set('team', {
+      complete: true,
+      partner: {
+        name:               'Julia',
+        pronoun:            'she',
+        birthday:           'September 21',
+        birth_year:         1978,
+        love_language:      null,
+        relationship_state: 'good',
+        tenure:             '3 months',
+        works:              'yes',
+        profession:         'Nurse',
+      },
+      children: [
+        {
+          name:    'Emily',
+          pronoun: 'she',
+          age:     27,
+          birthday: 'March 11',
+          whose:   'mine',
+        },
+        {
+          name:    'Owen',
+          pronoun: 'he',
+          age:     25,
+          birthday: 'February 26',
+          whose:   'mine',
+        },
+        {
+          name:    'Sophie',
+          pronoun: 'she',
+          age:     16,
+          birthday: 'December 1',
+          whose:   'mine',
+        },
+        {
+          name:    'Dexter',
+          pronoun: 'he',
+          age:     13,
+          birthday: null,
+          whose:   'partners',
+        },
+        {
+          name:    'Priya',
+          pronoun: 'she',
+          age:     11,
+          birthday: null,
+          whose:   'partners',
+        },
+      ],
+      coordinating: { rhythm: null },
+    });
+
+    store.set('vehicles', SHAWN_VEHICLES);
+
+    // Maintenance tasks — Shawn's real recurring items
+    store.set('maintenance_tasks', [
+      {
+        id:             'mt_furnace',
+        label:          'Furnace filter',
+        interval_days:  90,
+        interval_label: 'Every 3 months',
+        last_done:      isoFromNow(-95),   // overdue — Master Warning
+        next_due:       isoFromNow(-5),
+        notes:          '16x25x1 filter',
+        tier:           'warning',
+      },
+      {
+        id:             'mt_smoke',
+        label:          'Smoke detector batteries',
+        interval_days:  365,
+        interval_label: 'Annually',
+        last_done:      isoFromNow(-340),
+        next_due:       isoFromNow(25),
+        notes:          null,
+        tier:           'caution',
+      },
+      {
+        id:             'mt_gutters',
+        label:          'Gutter cleaning',
+        interval_days:  180,
+        interval_label: 'Every 6 months',
+        last_done:      isoFromNow(-185),
+        next_due:       isoFromNow(-5),
+        notes:          'Spring and fall',
+        tier:           'warning',
+      },
+      {
+        id:             'mt_dryer_vent',
+        label:          'Dryer vent cleaning',
+        interval_days:  365,
+        interval_label: 'Annually',
+        last_done:      isoFromNow(-200),
+        next_due:       isoFromNow(165),
+        notes:          null,
+        tier:           'caution',
+      },
+    ]);
+
+    // Urgent items — Master Warning and Master Caution
+    // Mazda3 service is the real derived item — surface it explicitly too
+    store.set('urgent_items', [
+      {
+        id:          'shawn_oil_change',
+        object:      'maintenance',
+        domain:      'maintenance',
+        title:       'Mazda3 — Oil change due',
+        body:        'Next at ~271,551 km · late July',
+        snoozable:   true,
+        snoozed_until: null,
+        tier:        'caution',
+        cascade: {
+          type:    'vehicle_service',
+          context: { vehicle_id: 'v_shawn_1', service_type: 'oil_change' },
+        },
+      },
+      {
+        id:          'shawn_throttle_body',
+        object:      'maintenance',
+        domain:      'maintenance',
+        title:       'Mazda3 — Throttle body clean',
+        body:        'Flagged — not yet done',
+        snoozable:   true,
+        snoozed_until: null,
+        tier:        'caution',
+        cascade: {
+          type:    'vehicle_service',
+          context: { vehicle_id: 'v_shawn_1', service_type: 'throttle_body' },
+        },
+      },
+    ]);
+
+    store.set('capture_notes', [
+      { text: 'Call about the deck permit', ts: hoursAgo(48) },
+      { text: 'Look into RRSP contribution room', ts: hoursAgo(12) },
+    ]);
+
+    console.log('[DEV] Real user loaded: Shawn, Comox BC — full environment');
+    await showHome(worlds);
+    return;
+  }
+
   if (devParam && PERSONAS[devParam]) {
     loadPersona(devParam, worlds);
     await showHome(worlds);
