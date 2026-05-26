@@ -202,7 +202,20 @@ export function createCascade({ item, onBack, onComplete }) {
     if (backBtn) {
       backBtn.addEventListener('mouseenter', () => backBtn.style.color = 'rgba(240,235,218,0.7)');
       backBtn.addEventListener('mouseleave', () => backBtn.style.color = 'rgba(240,235,218,0.35)');
-      backBtn.addEventListener('click', () => { close(); onBack?.(); });
+      backBtn.addEventListener('click', () => {
+        // During vehicle intake — back steps backward, not closes
+        if (cascade.type === 'vehicle_intake') {
+          const intakeState = cascade.context._intakeState;
+          if (intakeState && intakeState.step !== 'step_identity') {
+            const order = ['step_identity', 'step_mileage', 'step_service', 'step_history', 'step_details', 'step_review'];
+            const idx = order.indexOf(intakeState.step);
+            if (idx > 0) intakeState.step = order[idx - 1];
+            render('intake');
+            return;
+          }
+        }
+        close(); onBack?.();
+      });
     }
 
     // Route tiles
@@ -424,7 +437,84 @@ export function createCascade({ item, onBack, onComplete }) {
         if (cancelBtn) cancelBtn.addEventListener('click', () => { cascade.context._logMode = false; render('detail'); });
       }
 
-      // ── Tap-to-edit: flat fields ──────────────────────────────────────────
+      // ── Delete vehicle ────────────────────────────────────────────────────
+      const deleteBtn = el.querySelector('#vehicle-delete');
+      const confirmPanel = el.querySelector('#vehicle-delete-confirm');
+      const confirmYes = el.querySelector('#vehicle-delete-confirm-yes');
+      const confirmCancel = el.querySelector('#vehicle-delete-cancel');
+
+      if (deleteBtn && confirmPanel) {
+        deleteBtn.addEventListener('click', () => {
+          confirmPanel.style.display = 'block';
+          deleteBtn.style.display = 'none';
+        });
+      }
+      if (confirmCancel && confirmPanel) {
+        confirmCancel.addEventListener('click', () => {
+          confirmPanel.style.display = 'none';
+          if (deleteBtn) deleteBtn.style.display = '';
+        });
+      }
+      if (confirmYes) {
+        confirmYes.addEventListener('click', () => {
+          const vehicleId = confirmYes.dataset.vehicleId;
+          const vehicles = store.get('vehicles') || [];
+          store.set('vehicles', vehicles.filter(v => v.id !== vehicleId));
+          close();
+          onComplete?.();
+        });
+      }
+
+      // ── Edit vehicle details — opens intake cascade pre-populated ─────────
+      const editBtn = el.querySelector('#vehicle-edit');
+      if (editBtn) {
+        editBtn.addEventListener('click', () => {
+          const vehicleId = editBtn.dataset.vehicleId;
+          const vehicle   = getVehicle(vehicleId);
+          if (!vehicle) return;
+
+          // Pre-populate intake state from existing vehicle data
+          const prefilled = {
+            step:           'step_identity',
+            year:           vehicle.year            || '',
+            make:           vehicle.make            || '',
+            model:          vehicle.model           || '',
+            variant:        vehicle.variant         || '',
+            mileage:        vehicle.mileage_at_entry ? String(vehicle.mileage_at_entry) : '',
+            last_oil_date:  '',
+            last_oil_mileage: '',
+            interval_km:    vehicle.preferred_interval_km ? String(vehicle.preferred_interval_km) : '',
+            history:        vehicle.service_history ? [...vehicle.service_history] : [],
+            transmission:   vehicle.transmission    || '',
+            plate_province: vehicle.plate_province  || '',
+            preferred_shop: vehicle.preferred_shop  || '',
+            vin:            vehicle.vin             || '',
+            ai_schedule:    vehicle.maintenance_schedule
+              ? { ...vehicle.maintenance_schedule, vehicle_facts: vehicle.vehicle_facts }
+              : null,
+            _editingVehicleId: vehicleId, // flag so complete() updates rather than creates
+          };
+
+          // Open a new intake cascade with pre-filled state
+          const editItem = {
+            id:    'vehicle_edit_' + vehicleId,
+            title: vehicle.name || 'Edit vehicle',
+            body:  'Update details',
+            cascade: {
+              type:    'vehicle_intake',
+              context: { _intakeState: prefilled },
+            },
+          };
+          const editPanel = createCascade({
+            item: editItem,
+            onBack: () => {},
+            onComplete: () => { close(); onComplete?.(); },
+          });
+          if (editPanel) editPanel.open(el.parentElement || document.body);
+        });
+      }
+
+
       // Each .editable-line taps to swap the value div for an input.
       // On blur or Enter: write to store, swap back.
       el.querySelectorAll('.editable-line').forEach(row => {
@@ -735,6 +825,11 @@ function injectCascadeKeyframes() {
   style.textContent = `
     @keyframes cascadeSpin {
       to { transform: rotate(360deg); }
+    }
+    /* Intake input placeholders — visually subordinate to real data */
+    .intake-field::placeholder {
+      color: rgba(240,235,218,0.2);
+      font-style: italic;
     }
   `;
   document.head.appendChild(style);
@@ -1266,6 +1361,37 @@ const vehicleIntakeRenderer = {
     if (!state) return;
 
     const vehicles = store.get('vehicles') || [];
+
+    // Edit mode — update existing vehicle rather than creating a new one
+    if (state._editingVehicleId) {
+      const idx = vehicles.findIndex(v => v.id === state._editingVehicleId);
+      if (idx >= 0) {
+        vehicles[idx] = {
+          ...vehicles[idx],
+          name: [state.year, state.make, state.model, state.variant].filter(Boolean).join(' '),
+          year:  state.year,
+          make:  state.make,
+          model: state.model,
+          variant: state.variant || null,
+          mileage_at_entry: parseInt(state.mileage, 10) || vehicles[idx].mileage_at_entry,
+          mileage_date: new Date().toISOString().split('T')[0],
+          plate_province: state.plate_province || vehicles[idx].plate_province || null,
+          preferred_shop: state.preferred_shop || vehicles[idx].preferred_shop || null,
+          preferred_interval_km: parseInt(state.interval_km, 10) || vehicles[idx].preferred_interval_km || 8000,
+          vin: state.vin || vehicles[idx].vin || null,
+          transmission: state.transmission || vehicles[idx].transmission || null,
+          service_history: state.history?.length ? state.history : vehicles[idx].service_history || [],
+          maintenance_schedule: state.ai_schedule ? { ...state.ai_schedule, vehicle_facts: undefined } : vehicles[idx].maintenance_schedule,
+          vehicle_facts: state.ai_schedule?.vehicle_facts || vehicles[idx].vehicle_facts || null,
+          service_due: state.ai_schedule?.next_oil_change_date || vehicles[idx].service_due || null,
+        };
+        store.set('vehicles', vehicles);
+        logCascadeComplete('vehicle_intake', state._editingVehicleId, 'edited');
+      }
+      return;
+    }
+
+    // New vehicle
     const id = `v_${Date.now()}`;
 
     const newVehicle = {
@@ -1345,6 +1471,7 @@ function buildIntakeInput(id, label, placeholder, value = '', opts = {}) {
       ">${label}${opts.optional ? ' <span style="color:rgba(240,235,218,0.15);">— optional</span>' : ''}</div>
       <input
         id="${id}"
+        class="intake-field"
         type="${opts.type || 'text'}"
         inputmode="${opts.inputmode || 'text'}"
         placeholder="${placeholder}"
@@ -1415,10 +1542,10 @@ function buildIdentityStep(state, context) {
       margin-bottom:24px;line-height:1.6;
     ">What are we working with?</div>
 
-    ${buildIntakeInput('intake-year',    'Year',          '2015',       state.year,    { inputmode: 'numeric' })}
-    ${buildIntakeInput('intake-make',    'Make',          'Mazda',      state.make)}
-    ${buildIntakeInput('intake-model',   'Model',         'Mazda3',     state.model)}
-    ${buildIntakeInput('intake-variant', 'Trim / Variant','Sport',      state.variant, { optional: true })}
+    ${buildIntakeInput('intake-year',    'Year',          'e.g. 2019',      state.year,    { inputmode: 'numeric' })}
+    ${buildIntakeInput('intake-make',    'Make',          'e.g. Toyota',    state.make)}
+    ${buildIntakeInput('intake-model',   'Model',         'e.g. Camry',     state.model)}
+    ${buildIntakeInput('intake-variant', 'Trim / Variant','e.g. LE',        state.variant, { optional: true })}
 
     <div style="display:flex;align-items:center;margin-top:8px;">
       ${buildIntakeProceedButton('Continue')}
@@ -1443,7 +1570,7 @@ function buildMileageStep(state, context) {
     ">What's on the odometer right now?<br>
     <span style="font-size:11px;color:rgba(240,235,218,0.2);">Approximate is fine — I'll build from here.</span></div>
 
-    ${buildIntakeInput('intake-mileage', 'Current kilometres', '267000', state.mileage, { inputmode: 'numeric' })}
+    ${buildIntakeInput('intake-mileage', 'Current kilometres', 'e.g. 85000', state.mileage, { inputmode: 'numeric' })}
 
     <div style="display:flex;align-items:center;margin-top:8px;">
       ${buildIntakeProceedButton('Continue')}
@@ -1472,9 +1599,9 @@ function buildServiceStep(state, context) {
     ">Last oil change — when and how many kilometres?<br>
     <span style="font-size:11px;color:rgba(240,235,218,0.2);">If you're not sure, give me your best guess.</span></div>
 
-    ${buildIntakeInput('intake-last-oil-date',    'Date',        'March 10 2026',  state.last_oil_date,    { optional: false })}
-    ${buildIntakeInput('intake-last-oil-mileage', 'Kilometres',  '263551',         state.last_oil_mileage, { inputmode: 'numeric', optional: false })}
-    ${buildIntakeInput('intake-interval',         'Your preferred interval (km)', '8000', state.interval_km, { inputmode: 'numeric', optional: true })}
+    ${buildIntakeInput('intake-last-oil-date',    'Date',        'e.g. Jan 2025',  state.last_oil_date,    { optional: false })}
+    ${buildIntakeInput('intake-last-oil-mileage', 'Kilometres',  'e.g. 76000',     state.last_oil_mileage, { inputmode: 'numeric', optional: false })}
+    ${buildIntakeInput('intake-interval',         'Your preferred interval (km)', 'e.g. 8000', state.interval_km, { inputmode: 'numeric', optional: true })}
 
     ${hint}
 
@@ -1485,40 +1612,208 @@ function buildServiceStep(state, context) {
   `);
 }
 
-// Step 4 — Known history: recent work done
-// Presented as a checklist of common recent items. Tap to toggle.
+// Step 4 — Service history: major systems model
+// Each system is an expandable section. Common tiles inside. + other for anything else.
+// Tap a tile to toggle it into state.history. Items carry a system tag.
 function buildHistoryStep(state, context) {
-  const mileage = parseInt(state.mileage, 10) || 0;
 
-  // Dynamically suggest items based on mileage + AI schedule
-  const suggestions = buildHistorySuggestions(mileage, state.ai_schedule);
+  const SYSTEMS = [
+    {
+      id: 'engine',
+      label: 'Engine',
+      tiles: [
+        { id: 'oil_change',       label: 'Oil change' },
+        { id: 'air_filter',       label: 'Air filter' },
+        { id: 'spark_plugs',      label: 'Spark plugs' },
+        { id: 'fuel_system',      label: 'Fuel system service' },
+        { id: 'coolant_flush',    label: 'Coolant flush' },
+      ],
+    },
+    {
+      id: 'wheels_tires',
+      label: 'Wheels & Tires',
+      tiles: [
+        { id: 'tires_new',        label: 'New tires' },
+        { id: 'tires_summer',     label: 'Summer swap' },
+        { id: 'tires_winter',     label: 'Winter swap' },
+        { id: 'rotation',         label: 'Rotation' },
+        { id: 'balance',          label: 'Balance' },
+      ],
+    },
+    {
+      id: 'brakes',
+      label: 'Brakes',
+      tiles: [
+        { id: 'brake_pads_front', label: 'Front pads' },
+        { id: 'brake_pads_rear',  label: 'Rear pads' },
+        { id: 'rotors',           label: 'Rotors' },
+        { id: 'brake_fluid',      label: 'Fluid flush' },
+      ],
+    },
+    {
+      id: 'transmission',
+      label: 'Transmission',
+      tiles: [
+        { id: 'trans_fluid',      label: 'Fluid change' },
+        { id: 'trans_filter',     label: 'Filter' },
+      ],
+    },
+    {
+      id: 'electrical',
+      label: 'Electrical',
+      tiles: [
+        { id: 'battery',          label: 'Battery' },
+        { id: 'alternator',       label: 'Alternator' },
+      ],
+    },
+    {
+      id: 'belts_hoses',
+      label: 'Belts & Hoses',
+      tiles: [
+        { id: 'serpentine_belt',  label: 'Serpentine belt' },
+        { id: 'timing_service',   label: 'Timing belt / chain service' },
+      ],
+    },
+    {
+      id: 'filters',
+      label: 'Filters',
+      tiles: [
+        { id: 'cabin_filter',     label: 'Cabin air filter' },
+        { id: 'fuel_filter',      label: 'Fuel filter' },
+      ],
+    },
+  ];
 
   const checkedIds = state.history.map(h => h.type);
 
-  const items = suggestions.map(s => {
-    const checked = checkedIds.includes(s.id);
+  // Track which systems are expanded — stored on state to survive re-renders
+  if (!state._expandedSystems) state._expandedSystems = {};
+
+  const systemSections = SYSTEMS.map(system => {
+    const systemItems   = state.history.filter(h => h.system === system.id);
+    const systemChecked = systemItems.length;
+    const isExpanded    = !!state._expandedSystems[system.id];
+
+    const tiles = system.tiles.map(tile => {
+      const checked = checkedIds.includes(tile.id);
+      return `
+        <button class="intake-history-tile"
+          data-id="${tile.id}"
+          data-label="${tile.label}"
+          data-system="${system.id}"
+          style="
+            padding:10px 14px;margin:0 6px 6px 0;
+            border-radius:2px;
+            font-family:var(--font-sans);font-weight:300;
+            font-size:12px;letter-spacing:0.04em;
+            background:${checked ? 'rgba(210,160,60,0.08)' : 'rgba(240,235,218,0.03)'};
+            border:0.5px solid ${checked ? 'rgba(210,160,60,0.35)' : 'rgba(240,235,218,0.1)'};
+            color:rgba(240,235,218,${checked ? '0.85' : '0.45'});
+            cursor:pointer;transition:all 0.18s ease;
+            display:inline-flex;align-items:center;gap:6px;
+          "
+        >${tile.label}${checked ? ' <span style="color:rgba(210,160,60,0.6);font-size:10px;">✓</span>' : ''}</button>
+      `;
+    }).join('');
+
+    // Find any custom items for this system
+    const customItems = state.history.filter(h => h.system === system.id && h.custom);
+    const customChips = customItems.map(h => `
+      <span class="intake-custom-chip"
+        data-type="${h.type}"
+        data-system="${system.id}"
+        style="
+          display:inline-flex;align-items:center;gap:6px;
+          padding:8px 12px;margin:0 6px 6px 0;
+          border-radius:2px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:12px;letter-spacing:0.04em;
+          background:rgba(210,160,60,0.08);
+          border:0.5px solid rgba(210,160,60,0.35);
+          color:rgba(240,235,218,0.85);
+          cursor:pointer;
+        "
+      >${h.label} <span style="color:rgba(240,235,218,0.3);font-size:10px;">✕</span></span>
+    `).join('');
+
     return `
-      <button class="intake-history-item" data-id="${s.id}" data-label="${s.label}" style="
-        width:100%;text-align:left;
-        padding:14px 16px;margin-bottom:8px;
-        background:${checked ? 'rgba(210,160,60,0.08)' : 'rgba(240,235,218,0.03)'};
-        border:0.5px solid ${checked ? 'rgba(210,160,60,0.35)' : 'rgba(240,235,218,0.1)'};
-        border-radius:2px;
-        font-family:var(--font-sans);font-weight:300;
-        font-size:13px;letter-spacing:0.03em;
-        color:rgba(240,235,218,${checked ? '0.85' : '0.5'});
-        cursor:pointer;
-        transition:all 0.18s ease;
-        display:flex;justify-content:space-between;align-items:center;
+      <div class="intake-system-section" style="
+        border-bottom:0.5px solid rgba(240,235,218,0.06);
+        margin-bottom:2px;
       ">
-        ${s.label}
-        <span style="
-          font-size:10px;letter-spacing:0.15em;
-          color:${checked ? 'rgba(210,160,60,0.7)' : 'rgba(240,235,218,0.15)'};
-        ">${checked ? 'done ✓' : s.hint || ''}</span>
-      </button>
+        <!-- System header — tap to expand/collapse -->
+        <button class="intake-system-toggle"
+          data-system="${system.id}"
+          style="
+            width:100%;
+            padding:14px 0;
+            display:flex;justify-content:space-between;align-items:center;
+            font-family:var(--font-sans);font-weight:300;
+            font-size:13px;letter-spacing:0.04em;
+            color:rgba(240,235,218,${isExpanded ? '0.85' : '0.5'});
+            cursor:pointer;
+            transition:color 0.18s ease;
+          "
+        >
+          ${system.label}
+          <span style="
+            font-family:var(--font-sans);font-weight:200;
+            font-size:10px;letter-spacing:0.12em;
+            color:${systemChecked > 0 ? 'rgba(210,160,60,0.7)' : 'rgba(240,235,218,0.2)'};
+          ">${systemChecked > 0 ? systemChecked + ' logged' : isExpanded ? '▲' : '▼'}</span>
+        </button>
+
+        <!-- Expandable tile panel -->
+        <div class="intake-system-panel" data-system="${system.id}" style="
+          display:${isExpanded ? 'block' : 'none'};
+          padding-bottom:14px;
+        ">
+          <div style="display:flex;flex-wrap:wrap;margin-top:4px;">
+            ${tiles}
+            ${customChips}
+          </div>
+
+          <!-- + other text entry -->
+          <div style="margin-top:8px;display:flex;align-items:center;gap:8px;">
+            <input
+              class="intake-field intake-other-input"
+              data-system="${system.id}"
+              type="text"
+              placeholder="+ other"
+              style="
+                flex:1;
+                background:rgba(240,235,218,0.03);
+                border:0.5px solid rgba(240,235,218,0.08);
+                border-radius:2px;
+                padding:9px 12px;
+                font-family:var(--font-sans);font-weight:300;
+                font-size:12px;letter-spacing:0.04em;
+                color:rgba(240,235,218,0.75);
+                outline:none;
+              "
+              onfocus="this.style.borderColor='rgba(240,235,218,0.25)'"
+              onblur="this.style.borderColor='rgba(240,235,218,0.08)'"
+            />
+            <button class="intake-other-add" data-system="${system.id}" style="
+              padding:9px 14px;
+              font-family:var(--font-sans);font-weight:300;
+              font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+              color:rgba(240,235,218,0.4);
+              border:0.5px solid rgba(240,235,218,0.12);
+              border-radius:2px;
+              cursor:pointer;
+              transition:all 0.18s ease;
+            "
+            onmouseenter="this.style.color='rgba(240,235,218,0.75)';this.style.borderColor='rgba(240,235,218,0.3)'"
+            onmouseleave="this.style.color='rgba(240,235,218,0.4)';this.style.borderColor='rgba(240,235,218,0.12)'"
+            >Add</button>
+          </div>
+        </div>
+      </div>
     `;
   }).join('');
+
+  const totalLogged = state.history.length;
 
   return buildStepWrapper(4, 5, `
     <div style="
@@ -1527,45 +1822,17 @@ function buildHistoryStep(state, context) {
       color:rgba(240,235,218,0.4);
       margin-bottom:24px;line-height:1.6;
     ">Anything recently done worth tracking?<br>
-    <span style="font-size:11px;color:rgba(240,235,218,0.2);">Tap what applies. Skip the rest.</span></div>
+    <span style="font-size:11px;color:rgba(240,235,218,0.2);">Tap a system to expand. Tap what applies.</span></div>
 
-    <div id="intake-history-list">${items}</div>
+    <div id="intake-systems-list" style="margin-bottom:20px;">
+      ${systemSections}
+    </div>
 
-    <div style="display:flex;align-items:center;margin-top:16px;">
-      ${buildIntakeProceedButton('Continue')}
-      ${buildSkipLink('Skip')}
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${buildIntakeProceedButton(totalLogged > 0 ? `Continue — ${totalLogged} logged` : 'Continue')}
+      ${buildSkipLink('Nothing to add')}
     </div>
   `);
-}
-
-function buildHistorySuggestions(mileage, aiSchedule) {
-  // Base suggestions — always shown
-  const base = [
-    { id: 'spark_plugs',      label: 'Spark plugs',           hint: '' },
-    { id: 'timing_belt',      label: 'Timing belt / chain',   hint: '' },
-    { id: 'brakes',           label: 'Brakes (pads / rotors)',hint: '' },
-    { id: 'struts',           label: 'Struts / suspension',   hint: '' },
-    { id: 'coolant',          label: 'Coolant flush',         hint: '' },
-    { id: 'transmission',     label: 'Transmission fluid',    hint: '' },
-    { id: 'fuel_system',      label: 'Fuel system clean',     hint: '' },
-    { id: 'throttle_body',    label: 'Throttle body clean',   hint: '' },
-    { id: 'tires_summer',     label: 'Summer tires on',       hint: '' },
-    { id: 'tires_winter',     label: 'Winter tires on',       hint: '' },
-    { id: 'brake_fluid',      label: 'Brake fluid bleed',     hint: '' },
-    { id: 'cabin_filter',     label: 'Cabin air filter',      hint: '' },
-    { id: 'engine_filter',    label: 'Engine air filter',     hint: '' },
-  ];
-
-  // Add AI-flagged items if schedule has them
-  if (aiSchedule?.upcoming_items) {
-    aiSchedule.upcoming_items.forEach(item => {
-      if (!base.find(b => b.id === item.id)) {
-        base.push({ id: item.id, label: item.label, hint: 'coming up' });
-      }
-    });
-  }
-
-  return base;
 }
 
 // Step 5 — Details: transmission, plate province, shop, VIN
@@ -1601,9 +1868,9 @@ function buildDetailsStep(state, context) {
       </div>
     </div>
 
-    ${buildIntakeInput('intake-province',  'Plate province', 'BC',              province,           { optional: true })}
-    ${buildIntakeInput('intake-shop',      'Preferred shop', 'Mr. Lube',        state.preferred_shop, { optional: true })}
-    ${buildIntakeInput('intake-vin',       'VIN',            '1HGBH41JXMN109...',state.vin,          { optional: true })}
+    ${buildIntakeInput('intake-province',  'Plate province', 'e.g. BC',         province,              { optional: true })}
+    ${buildIntakeInput('intake-shop',      'Preferred shop', 'e.g. Jiffy Lube', state.preferred_shop,  { optional: true })}
+    ${buildIntakeInput('intake-vin',       'VIN',            'e.g. 1HGBH41J...',state.vin,             { optional: true })}
 
     <div style="
       margin-top:-8px;margin-bottom:20px;
@@ -1691,18 +1958,83 @@ export function attachIntakeListeners(el, cascade, render, close, onComplete) {
     });
   }
 
-  // History checklist toggles
-  el.querySelectorAll('.intake-history-item').forEach(btn => {
+  // System section toggles — expand / collapse
+  el.querySelectorAll('.intake-system-toggle').forEach(btn => {
     btn.addEventListener('click', () => {
-      const id    = btn.dataset.id;
-      const label = btn.dataset.label;
-      const idx   = state.history.findIndex(h => h.type === id);
+      const systemId = btn.dataset.system;
+      if (!state._expandedSystems) state._expandedSystems = {};
+      state._expandedSystems[systemId] = !state._expandedSystems[systemId];
+      render('intake');
+    });
+  });
+
+  // History tile toggles — tap to add/remove from state.history
+  el.querySelectorAll('.intake-history-tile').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id       = btn.dataset.id;
+      const label    = btn.dataset.label;
+      const systemId = btn.dataset.system;
+      const idx      = state.history.findIndex(h => h.type === id);
       if (idx >= 0) {
         state.history.splice(idx, 1);
       } else {
-        state.history.push({ type: id, label, date: null, mileage: null, notes: null });
+        state.history.push({ type: id, label, system: systemId, date: null, mileage: null, notes: null });
       }
-      // Re-render this step only — state already updated
+      render('intake');
+    });
+  });
+
+  // Custom chip removal — tap the ✕ on a custom item to remove it
+  el.querySelectorAll('.intake-custom-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const type     = chip.dataset.type;
+      const systemId = chip.dataset.system;
+      const idx      = state.history.findIndex(h => h.type === type && h.system === systemId);
+      if (idx >= 0) state.history.splice(idx, 1);
+      render('intake');
+    });
+  });
+
+  // + other add buttons — take the text from the sibling input, add to history
+  el.querySelectorAll('.intake-other-add').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const systemId = btn.dataset.system;
+      const input    = el.querySelector(`.intake-other-input[data-system="${systemId}"]`);
+      const text     = input?.value.trim();
+      if (!text) return;
+      // Unique custom type key per system + label
+      const customType = `custom_${systemId}_${Date.now()}`;
+      state.history.push({
+        type:   customType,
+        label:  text,
+        system: systemId,
+        custom: true,
+        date:   null,
+        mileage: null,
+        notes:  null,
+      });
+      render('intake');
+    });
+  });
+
+  // Also allow Enter key in + other inputs
+  el.querySelectorAll('.intake-other-input').forEach(input => {
+    input.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const systemId  = input.dataset.system;
+      const text      = input.value.trim();
+      if (!text) return;
+      const customType = `custom_${systemId}_${Date.now()}`;
+      state.history.push({
+        type:   customType,
+        label:  text,
+        system: systemId,
+        custom: true,
+        date:   null,
+        mileage: null,
+        notes:  null,
+      });
       render('intake');
     });
   });
@@ -1854,7 +2186,70 @@ const vehicleDetailRenderer = {
 function buildVehicleDetailHTML(v) {
   const sections = [];
 
-  // ── Vehicle facts (AI-authoritative) ─────────────────────────────────────
+  // ── Vehicle actions — delete and edit ────────────────────────────────────
+  sections.push(`
+    <div style="display:flex;gap:10px;margin-bottom:28px;">
+      <button id="vehicle-edit" data-vehicle-id="${v.id}" style="
+        padding:10px 18px;border-radius:2px;
+        font-family:var(--font-sans);font-weight:300;
+        font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+        color:rgba(240,235,218,0.6);
+        border:0.5px solid rgba(240,235,218,0.2);
+        cursor:pointer;transition:all 0.18s ease;
+      "
+      onmouseenter="this.style.color='rgba(240,235,218,0.9)';this.style.borderColor='rgba(240,235,218,0.4)'"
+      onmouseleave="this.style.color='rgba(240,235,218,0.6)';this.style.borderColor='rgba(240,235,218,0.2)'"
+      >Edit vehicle details</button>
+      <button id="vehicle-delete" data-vehicle-id="${v.id}" style="
+        padding:10px 18px;border-radius:2px;
+        font-family:var(--font-sans);font-weight:300;
+        font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+        color:rgba(240,235,218,0.25);
+        border:0.5px solid rgba(240,235,218,0.1);
+        cursor:pointer;transition:all 0.18s ease;
+      "
+      onmouseenter="this.style.color='rgba(210,80,60,0.7)';this.style.borderColor='rgba(210,80,60,0.3)'"
+      onmouseleave="this.style.color='rgba(240,235,218,0.25)';this.style.borderColor='rgba(240,235,218,0.1)'"
+      >Delete vehicle</button>
+    </div>
+
+    <!-- Confirm delete — hidden until delete is tapped -->
+    <div id="vehicle-delete-confirm" style="display:none;
+      margin-bottom:28px;padding:16px;
+      background:rgba(210,80,60,0.06);
+      border:0.5px solid rgba(210,80,60,0.2);
+      border-radius:2px;
+    ">
+      <div style="
+        font-family:var(--font-sans);font-weight:300;
+        font-size:13px;letter-spacing:0.03em;
+        color:rgba(240,235,218,0.7);margin-bottom:14px;
+      ">Remove ${v.name || 'this vehicle'} permanently?</div>
+      <div style="display:flex;gap:10px;">
+        <button id="vehicle-delete-confirm-yes" data-vehicle-id="${v.id}" style="
+          padding:9px 18px;border-radius:2px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+          color:rgba(210,80,60,0.8);
+          border:0.5px solid rgba(210,80,60,0.35);
+          cursor:pointer;transition:all 0.18s ease;
+        "
+        onmouseenter="this.style.background='rgba(210,80,60,0.08)'"
+        onmouseleave="this.style.background='transparent'"
+        >Yes, remove it</button>
+        <button id="vehicle-delete-cancel" style="
+          padding:9px 18px;
+          font-family:var(--font-sans);font-weight:200;
+          font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+          color:rgba(240,235,218,0.25);cursor:pointer;transition:color 0.18s ease;
+        "
+        onmouseenter="this.style.color='rgba(240,235,218,0.6)'"
+        onmouseleave="this.style.color='rgba(240,235,218,0.25)'"
+        >Cancel</button>
+      </div>
+    </div>
+  `);
+
   // Shown first — what the AI knows about this engine, not user-entered data.
   if (v.vehicle_facts) {
     const f = v.vehicle_facts;

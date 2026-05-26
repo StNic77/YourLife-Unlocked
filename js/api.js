@@ -317,12 +317,16 @@ For Canadian users: return distances in km, not miles.`;
 
     const vehicleDesc = [year, make, model, variant].filter(Boolean).join(' ') || 'unknown vehicle';
 
+    const today = new Date().toISOString().split('T')[0];
+
     const messages = [{
       role: 'user',
       content: `Vehicle: ${vehicleDesc}.
+Today's date: ${today}.
 Current mileage: ${mileage} km.
 Last oil change: ${last_oil_date || 'unknown'} at ${last_oil_mileage || 'unknown'} km.
 Preferred oil change interval: ${interval_km || 8000} km.
+If driving history is insufficient to estimate a date, assume 1,500 km/month. Calculate next_oil_change_date forward from today's date. Never return a date in the past. Never return null for next_oil_change_date if next_oil_change_km is known.
 
 Return JSON with these fields (use null for unknown values):
 {

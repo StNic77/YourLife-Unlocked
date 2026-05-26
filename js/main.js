@@ -417,6 +417,15 @@ async function boot() {
 
   // Real user shortcut — loads Shawn's actual data
   if (devParam === 'shawn') {
+    // Only reset if this is a fresh load — preserve any data the user has saved.
+    // Once the shawn environment is bootstrapped, a flag is written to the store.
+    // Subsequent reloads (with ?dev=shawn still in the URL) skip the reset
+    // so that vehicles, edits, and any other saves survive page refresh.
+    const alreadyLoaded = store.get('dev_shawn_loaded');
+    if (alreadyLoaded) {
+      await showHome(worlds);
+      return;
+    }
     store.reset();
 
     store.set('world', 'operator');
@@ -591,6 +600,7 @@ async function boot() {
       { text: 'Look into RRSP contribution room', ts: hoursAgo(12) },
     ]);
 
+    store.set('dev_shawn_loaded', true);
     console.log('[DEV] Real user loaded: Shawn, Comox BC — full environment');
     await showHome(worlds);
     return;
