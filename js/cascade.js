@@ -482,8 +482,8 @@ export function createCascade({ item, onBack, onComplete }) {
             model:          vehicle.model           || '',
             variant:        vehicle.variant         || '',
             mileage:        vehicle.mileage_at_entry ? String(vehicle.mileage_at_entry) : '',
-            last_oil_date:  '',
-            last_oil_mileage: '',
+            last_oil_date:  vehicle.last_oil_change_date  || '',
+            last_oil_mileage: vehicle.last_oil_change_km ? String(vehicle.last_oil_change_km) : '',
             interval_km:    vehicle.preferred_interval_km ? String(vehicle.preferred_interval_km) : '',
             history:        vehicle.service_history ? [...vehicle.service_history] : [],
             transmission:   vehicle.transmission    || '',
@@ -1383,7 +1383,8 @@ const vehicleIntakeRenderer = {
           transmission: state.transmission || vehicles[idx].transmission || null,
           service_history: state.history?.length ? state.history : vehicles[idx].service_history || [],
           maintenance_schedule: state.ai_schedule ? { ...state.ai_schedule, vehicle_facts: undefined } : vehicles[idx].maintenance_schedule,
-          vehicle_facts: state.ai_schedule?.vehicle_facts || vehicles[idx].vehicle_facts || null,
+          // vehicle_facts are locked after first confirmed pull — never overwrite with a fresh AI response on edit
+          vehicle_facts: vehicles[idx].vehicle_facts || state.ai_schedule?.vehicle_facts || null,
           service_due: state.ai_schedule?.next_oil_change_date || vehicles[idx].service_due || null,
         };
         store.set('vehicles', vehicles);
@@ -1631,14 +1632,19 @@ function buildHistoryStep(state, context) {
       ],
     },
     {
-      id: 'wheels_tires',
-      label: 'Wheels & Tires',
+      id: 'suspension_wheels_tires',
+      label: 'Suspension, Wheels & Tires',
       tiles: [
         { id: 'tires_new',        label: 'New tires' },
         { id: 'tires_summer',     label: 'Summer swap' },
         { id: 'tires_winter',     label: 'Winter swap' },
         { id: 'rotation',         label: 'Rotation' },
         { id: 'balance',          label: 'Balance' },
+        { id: 'alignment',        label: 'Alignment' },
+        { id: 'struts_front',     label: 'Front struts' },
+        { id: 'struts_rear',      label: 'Rear struts' },
+        { id: 'sway_bar_links',   label: 'Sway bar links' },
+        { id: 'cv_axle',          label: 'CV axle / boot' },
       ],
     },
     {
@@ -2135,6 +2141,7 @@ async function fetchVehicleSchedule(state) {
       make:              state.make,
       model:             state.model,
       variant:           state.variant,
+      vin:               state.vin         || null,
       mileage:           state.mileage,
       last_oil_date:     state.last_oil_date,
       last_oil_mileage:  state.last_oil_mileage,

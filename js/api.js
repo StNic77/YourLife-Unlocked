@@ -308,42 +308,46 @@ Return JSON: { "city": "string", "province_code": "string", "province_name": "st
   // AI contract: structured JSON only — no preamble, no explanation.
   // ---------------------------------------------------------------------------
 
-  async getVehicleSchedule({ year, make, model, variant, mileage, last_oil_date, last_oil_mileage, interval_km }) {
-    const system = `You are a vehicle maintenance expert and data retrieval service for a personal life app.
+  async getVehicleSchedule({ year, make, model, variant, vin, mileage, last_oil_date, last_oil_mileage, interval_km }) {
+    const system = `You are a vehicle maintenance data service for a personal life app.
 Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
-You have accurate knowledge of manufacturer maintenance schedules for specific makes and models.
-High-mileage vehicles (over 200,000 km) should receive appropriate flags where relevant.
-For Canadian users: return distances in km, not miles.`;
+
+ACCURACY RULES — read carefully:
+1. Only return a value when you are highly confident it is correct for this exact vehicle.
+2. If a VIN is provided, use it as the primary identifier. Confirm engine, transmission, and trim from the VIN before returning any specification.
+3. For vehicle_facts fields: only return values you can confirm from multiple authoritative sources (OEM service data, manufacturer specs). If you are uncertain about any specific value — gap, quantity, fluid type, interval — return null for that field. Do not estimate or approximate.
+4. A null is always preferable to an inaccurate spec. The user will see "unconfirmed" and can verify. An inaccurate spec causes real harm.
+5. For Canadian users: return distances in km, not miles.`;
 
     const vehicleDesc = [year, make, model, variant].filter(Boolean).join(' ') || 'unknown vehicle';
-
     const today = new Date().toISOString().split('T')[0];
 
     const messages = [{
       role: 'user',
-      content: `Vehicle: ${vehicleDesc}.
+      content: `Vehicle: ${vehicleDesc}.${vin ? `\nVIN: ${vin} — use this to confirm exact engine, transmission, and trim.` : ''}
 Today's date: ${today}.
 Current mileage: ${mileage} km.
 Last oil change: ${last_oil_date || 'unknown'} at ${last_oil_mileage || 'unknown'} km.
 Preferred oil change interval: ${interval_km || 8000} km.
 If driving history is insufficient to estimate a date, assume 1,500 km/month. Calculate next_oil_change_date forward from today's date. Never return a date in the past. Never return null for next_oil_change_date if next_oil_change_km is known.
 
-Return JSON with these fields (use null for unknown values):
+Return JSON with these fields (use null for any value you cannot confirm with high confidence):
 {
   "next_oil_change_km": number,
   "next_oil_change_date": "Month YYYY",
-  "oil_spec": "string — e.g. 0W-20 full synthetic",
+  "oil_spec": "string — exact OEM-specified grade e.g. 0W-20 full synthetic",
   "upcoming_items": [
     { "id": "string", "label": "string", "due_km": number, "urgency": "now|soon|watch" }
   ],
-  "notes": "string or null — high-mileage flags, known issues for this vehicle",
+  "notes": "string or null — confirmed known issues or TSBs for this exact year and engine only",
   "vehicle_facts": {
-    "timing_system": "string — timing chain (maintenance-free) or timing belt with interval",
-    "serpentine_belt": "string — quantity and replacement interval in km",
-    "spark_plugs": "string — type, gap, replacement interval in km",
-    "transmission_fluid": "string — fluid type and change interval",
-    "coolant": "string — type and flush interval",
-    "notes": "string or null — known issues or service bulletins for this exact engine and year"
+    "timing_system": "string — confirm chain or belt. If belt: include OEM replacement interval in km. Return null if uncertain.",
+    "serpentine_belt": "string — confirm exact quantity and OEM replacement interval. e.g. '2 belts — serpentine at 160,000 km, accessory belt at 100,000 km'. Return null if uncertain.",
+    "spark_plugs": "string — confirm exact plug type, electrode gap in mm, and OEM replacement interval. Return null if uncertain.",
+    "transmission_fluid": "string — confirm exact fluid spec and OEM change interval. Return null if uncertain.",
+    "coolant": "string — confirm exact coolant type (e.g. OAT, HOAT, IAT) and OEM flush interval. Return null if uncertain.",
+    "transmission_type": "string — confirm 'manual' or 'automatic' and exact type e.g. '6-speed manual'. Return null if uncertain.",
+    "notes": "string or null — confirmed TSBs or known issues for this exact engine and model year only. Do not include general reliability observations."
   }
 }`,
     }];

@@ -61,8 +61,8 @@ This handles the specific real-world case where a step-parent knows approximate 
 
 ---
 
-### Calendar component — parked with framing
-Date fields across the app (vehicle intake, domain details, onboarding) need a calendar picker. Parked until the calendar component is properly designed and built as a standalone piece. Current date fields use text input with format hints. The user birthday question in onboarding was investigated — it doesn't exist yet and was not added. If added later, it needs to unlock meaningful intelligence to earn its place in the flow, not just enable a notification.
+### Calendar component — hard requirement, parked until built
+Date fields across the app (vehicle intake, domain details, onboarding) require a calendar picker. This is a hard requirement — date fields do not ship as text inputs. No date field is considered done until the calendar component exists. Current text inputs are a temporary placeholder only. The calendar component must be designed and built as a standalone piece before any date field is marked complete.
 
 ---
 
@@ -79,7 +79,7 @@ Date fields across the app (vehicle intake, domain details, onboarding) need a c
 ## 5. Still Parked — Carried to Session 21
 
 - **Dead buttons audit** — Session 21 first priority
-- **Calendar component** — design before build, applies to all date fields across domains
+- **Calendar component — hard requirement** — no date field ships as text input. Design before build. Applies to all date fields across domains.
 - **User birthday in onboarding** — only if it unlocks meaningful intelligence
 - All other parked items from Session 20 handoff remain unchanged
 
