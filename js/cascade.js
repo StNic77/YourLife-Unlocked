@@ -85,6 +85,11 @@ export function createCascade({ item, onBack, onComplete }) {
 
   async function render(selectedRoute) {
     const pref  = selectedRoute || getPreference(cascade.type);
+
+    // Save scroll position before re-render (intake tile taps, system toggles)
+    const scrollEl = el.querySelector('#cascade-scroll');
+    const savedScroll = scrollEl ? scrollEl.scrollTop : 0;
+
     const state = await renderer.resolve(cascade.context, pref);
 
     el.innerHTML = buildShell({
@@ -96,12 +101,18 @@ export function createCascade({ item, onBack, onComplete }) {
       hasRoute: !!state.route,
     });
 
+    // Restore scroll position after re-render
+    const newScrollEl = el.querySelector('#cascade-scroll');
+    if (newScrollEl && savedScroll > 0) {
+      newScrollEl.scrollTop = savedScroll;
+    }
+
     attachShellListeners(state);
   }
 
   function buildShell({ title, subtitle, content, hasRoute }) {
     return `
-      <div style="
+      <div id="cascade-scroll" style="
         position:absolute;inset:0;
         height:100dvh;
         overflow-y:auto;
@@ -466,6 +477,62 @@ export function createCascade({ item, onBack, onComplete }) {
         });
       }
 
+      // ── Refresh vehicle facts ─────────────────────────────────────────────
+      const refreshBtn = el.querySelector('#vehicle-refresh-facts');
+      if (refreshBtn) {
+        refreshBtn.addEventListener('click', async () => {
+          const vehicleId = refreshBtn.dataset.vehicleId;
+          const vehicles  = store.get('vehicles') || [];
+          const idx       = vehicles.findIndex(v => v.id === vehicleId);
+          if (idx < 0) return;
+
+          const v = vehicles[idx];
+          refreshBtn.textContent = 'Refreshing…';
+          refreshBtn.style.pointerEvents = 'none';
+
+          try {
+            const schedule = await api.getVehicleSchedule({
+              year:             v.year,
+              make:             v.make,
+              model:            v.model,
+              variant:          v.variant,
+              vin:              v.vin          || null,
+              transmission:     v.transmission || null,
+              mileage:          v.mileage_at_entry ? String(v.mileage_at_entry) : '0',
+              last_oil_date:    v.last_oil_date    || '',
+              last_oil_mileage: v.last_oil_mileage ? String(v.last_oil_mileage) : '',
+              interval_km:      v.preferred_interval_km ? String(v.preferred_interval_km) : '8000',
+            });
+
+            console.log('[vehicle] refresh facts response:', JSON.stringify(schedule, null, 2));
+
+            if (schedule) {
+              vehicles[idx] = {
+                ...vehicles[idx],
+                vehicle_facts: schedule.vehicle_facts || vehicles[idx].vehicle_facts || null,
+                maintenance_schedule: { ...schedule, vehicle_facts: undefined },
+                service_due: schedule.next_oil_change_date || vehicles[idx].service_due,
+              };
+              store.set('vehicles', vehicles);
+              render();
+            } else {
+              refreshBtn.textContent = 'No data returned';
+              setTimeout(() => {
+                refreshBtn.textContent = 'Refresh facts';
+                refreshBtn.style.pointerEvents = '';
+              }, 2000);
+            }
+          } catch (err) {
+            console.warn('[vehicle] refresh facts failed:', err);
+            refreshBtn.textContent = 'Failed — try again';
+            setTimeout(() => {
+              refreshBtn.textContent = 'Refresh facts';
+              refreshBtn.style.pointerEvents = '';
+            }, 2000);
+          }
+        });
+      }
+
       // ── Edit vehicle details — opens intake cascade pre-populated ─────────
       const editBtn = el.querySelector('#vehicle-edit');
       if (editBtn) {
@@ -482,8 +549,8 @@ export function createCascade({ item, onBack, onComplete }) {
             model:          vehicle.model           || '',
             variant:        vehicle.variant         || '',
             mileage:        vehicle.mileage_at_entry ? String(vehicle.mileage_at_entry) : '',
-            last_oil_date:  vehicle.last_oil_change_date  || '',
-            last_oil_mileage: vehicle.last_oil_change_km ? String(vehicle.last_oil_change_km) : '',
+            last_oil_date:    vehicle.last_oil_date     || '',
+            last_oil_mileage: vehicle.last_oil_mileage  ? String(vehicle.last_oil_mileage) : '',
             interval_km:    vehicle.preferred_interval_km ? String(vehicle.preferred_interval_km) : '',
             history:        vehicle.service_history ? [...vehicle.service_history] : [],
             transmission:   vehicle.transmission    || '',
@@ -1376,6 +1443,8 @@ const vehicleIntakeRenderer = {
           variant: state.variant || null,
           mileage_at_entry: parseInt(state.mileage, 10) || vehicles[idx].mileage_at_entry,
           mileage_date: new Date().toISOString().split('T')[0],
+          last_oil_date: state.last_oil_date || vehicles[idx].last_oil_date || null,
+          last_oil_mileage: parseInt(state.last_oil_mileage, 10) || vehicles[idx].last_oil_mileage || null,
           plate_province: state.plate_province || vehicles[idx].plate_province || null,
           preferred_shop: state.preferred_shop || vehicles[idx].preferred_shop || null,
           preferred_interval_km: parseInt(state.interval_km, 10) || vehicles[idx].preferred_interval_km || 8000,
@@ -1383,7 +1452,7 @@ const vehicleIntakeRenderer = {
           transmission: state.transmission || vehicles[idx].transmission || null,
           service_history: state.history?.length ? state.history : vehicles[idx].service_history || [],
           maintenance_schedule: state.ai_schedule ? { ...state.ai_schedule, vehicle_facts: undefined } : vehicles[idx].maintenance_schedule,
-          // vehicle_facts are locked after first confirmed pull — never overwrite with a fresh AI response on edit
+          // vehicle_facts locked — only update if none exist yet
           vehicle_facts: vehicles[idx].vehicle_facts || state.ai_schedule?.vehicle_facts || null,
           service_due: state.ai_schedule?.next_oil_change_date || vehicles[idx].service_due || null,
         };
@@ -1405,6 +1474,8 @@ const vehicleIntakeRenderer = {
       variant: state.variant || null,
       mileage_at_entry: parseInt(state.mileage, 10) || null,
       mileage_date: new Date().toISOString().split('T')[0],
+      last_oil_date: state.last_oil_date || null,
+      last_oil_mileage: parseInt(state.last_oil_mileage, 10) || null,
       plate_province: state.plate_province || store.get('user')?.province || null,
       preferred_shop: state.preferred_shop || null,
       preferred_interval_km: parseInt(state.interval_km, 10) || 8000,
@@ -2141,7 +2212,8 @@ async function fetchVehicleSchedule(state) {
       make:              state.make,
       model:             state.model,
       variant:           state.variant,
-      vin:               state.vin         || null,
+      vin:               state.vin          || null,
+      transmission:      state.transmission || null,
       mileage:           state.mileage,
       last_oil_date:     state.last_oil_date,
       last_oil_mileage:  state.last_oil_mileage,
@@ -2208,6 +2280,17 @@ function buildVehicleDetailHTML(v) {
       onmouseenter="this.style.color='rgba(240,235,218,0.9)';this.style.borderColor='rgba(240,235,218,0.4)'"
       onmouseleave="this.style.color='rgba(240,235,218,0.6)';this.style.borderColor='rgba(240,235,218,0.2)'"
       >Edit vehicle details</button>
+      <button id="vehicle-refresh-facts" data-vehicle-id="${v.id}" style="
+        padding:10px 18px;border-radius:2px;
+        font-family:var(--font-sans);font-weight:300;
+        font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+        color:rgba(240,235,218,0.25);
+        border:0.5px solid rgba(240,235,218,0.1);
+        cursor:pointer;transition:all 0.18s ease;
+      "
+      onmouseenter="this.style.color='rgba(210,160,60,0.7)';this.style.borderColor='rgba(210,160,60,0.3)'"
+      onmouseleave="this.style.color='rgba(240,235,218,0.25)';this.style.borderColor='rgba(240,235,218,0.1)'"
+      >Refresh facts</button>
       <button id="vehicle-delete" data-vehicle-id="${v.id}" style="
         padding:10px 18px;border-radius:2px;
         font-family:var(--font-sans);font-weight:300;

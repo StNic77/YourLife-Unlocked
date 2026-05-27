@@ -308,51 +308,52 @@ Return JSON: { "city": "string", "province_code": "string", "province_name": "st
   // AI contract: structured JSON only — no preamble, no explanation.
   // ---------------------------------------------------------------------------
 
-  async getVehicleSchedule({ year, make, model, variant, vin, mileage, last_oil_date, last_oil_mileage, interval_km }) {
+  async getVehicleSchedule({ year, make, model, variant, vin, transmission, mileage, last_oil_date, last_oil_mileage, interval_km }) {
     const system = `You are a vehicle maintenance data service for a personal life app.
 Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
 
-ACCURACY RULES — read carefully:
-1. Only return a value when you are highly confident it is correct for this exact vehicle.
-2. If a VIN is provided, use it as the primary identifier. Confirm engine, transmission, and trim from the VIN before returning any specification.
-3. For vehicle_facts fields: only return values you can confirm from multiple authoritative sources (OEM service data, manufacturer specs). If you are uncertain about any specific value — gap, quantity, fluid type, interval — return null for that field. Do not estimate or approximate.
-4. A null is always preferable to an inaccurate spec. The user will see "unconfirmed" and can verify. An inaccurate spec causes real harm.
-5. For Canadian users: return distances in km, not miles.`;
+ACCURACY RULES:
+1. Return your best confirmed knowledge for this exact vehicle. Be specific.
+2. If a VIN is provided, use it as the primary identifier to confirm engine and trim.
+3. If the user has specified a transmission type, that is authoritative — use it to return the correct fluid spec. Do not override the user's stated transmission type.
+4. For vehicle_facts: return null only if you have conflicting information or genuinely no data. Do not return null merely because you are uncertain — return your best knowledge and note uncertainty in the notes field.
+5. Distances in km for Canadian users.`;
 
     const vehicleDesc = [year, make, model, variant].filter(Boolean).join(' ') || 'unknown vehicle';
     const today = new Date().toISOString().split('T')[0];
+    const transNote = transmission ? `\nTransmission: ${transmission} — this is authoritative. Use it to constrain all transmission-related output including type, fluid spec, service intervals, and upcoming items. Do not infer or override the transmission type from the VIN or model defaults.` : '';
 
     const messages = [{
       role: 'user',
-      content: `Vehicle: ${vehicleDesc}.${vin ? `\nVIN: ${vin} — use this to confirm exact engine, transmission, and trim.` : ''}
+      content: `Vehicle: ${vehicleDesc}.${vin ? `\nVIN: ${vin}` : ''}${transNote}
 Today's date: ${today}.
 Current mileage: ${mileage} km.
 Last oil change: ${last_oil_date || 'unknown'} at ${last_oil_mileage || 'unknown'} km.
 Preferred oil change interval: ${interval_km || 8000} km.
 If driving history is insufficient to estimate a date, assume 1,500 km/month. Calculate next_oil_change_date forward from today's date. Never return a date in the past. Never return null for next_oil_change_date if next_oil_change_km is known.
 
-Return JSON with these fields (use null for any value you cannot confirm with high confidence):
+Return JSON with these fields (use null only where genuinely unknown):
 {
   "next_oil_change_km": number,
   "next_oil_change_date": "Month YYYY",
-  "oil_spec": "string — exact OEM-specified grade e.g. 0W-20 full synthetic",
+  "oil_spec": "string — exact OEM grade e.g. 0W-20 full synthetic",
   "upcoming_items": [
     { "id": "string", "label": "string", "due_km": number, "urgency": "now|soon|watch" }
   ],
-  "notes": "string or null — confirmed known issues or TSBs for this exact year and engine only",
+  "notes": "string or null — confirmed known issues or TSBs for this exact year and engine",
   "vehicle_facts": {
-    "timing_system": "string — confirm chain or belt. If belt: include OEM replacement interval in km. Return null if uncertain.",
-    "serpentine_belt": "string — confirm exact quantity and OEM replacement interval. e.g. '2 belts — serpentine at 160,000 km, accessory belt at 100,000 km'. Return null if uncertain.",
-    "spark_plugs": "string — confirm exact plug type, electrode gap in mm, and OEM replacement interval. Return null if uncertain.",
-    "transmission_fluid": "string — confirm exact fluid spec and OEM change interval. Return null if uncertain.",
-    "coolant": "string — confirm exact coolant type (e.g. OAT, HOAT, IAT) and OEM flush interval. Return null if uncertain.",
-    "transmission_type": "string — confirm 'manual' or 'automatic' and exact type e.g. '6-speed manual'. Return null if uncertain.",
-    "notes": "string or null — confirmed TSBs or known issues for this exact engine and model year only. Do not include general reliability observations."
+    "timing_system": "string — confirm chain or belt. If belt include OEM replacement interval in km.",
+    "serpentine_belt": "string — exact quantity and OEM replacement interval e.g. '2 belts — serpentine at 160,000 km, accessory belt at 100,000 km'.",
+    "spark_plugs": "string — exact plug type, electrode gap in mm, OEM replacement interval.",
+    "transmission_fluid": "string — exact fluid spec and OEM change interval based on the user-specified transmission type. If manual: correct gear oil spec not ATF. If modified: fluid appropriate for the specified configuration.",
+    "transmission_type": "string — use the user-provided transmission type as authoritative. Include specific type e.g. '6-speed manual' or '8-speed automatic'.",
+    "coolant": "string — exact coolant type (OAT, HOAT, IAT) and OEM flush interval.",
+    "notes": "string or null — confirmed TSBs or known issues for this exact engine and model year."
   }
 }`,
     }];
 
-    const raw = await this.send({ system, messages, maxTokens: 1200, model: MODEL_FAST });
+    const raw = await this.send({ system, messages, maxTokens: 1200, model: MODEL_RICH });
     return safeParseJSON(raw);
   },
 
