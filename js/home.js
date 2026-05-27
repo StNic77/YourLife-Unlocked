@@ -1217,7 +1217,7 @@ export function createHome(world) {
           closeBrief();
         },
       });
-      if (cascadePanel) cascadePanel.open(el);
+      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
     };
 
     panel.querySelectorAll('.cascade-open-btn').forEach(btn => {
@@ -1260,7 +1260,7 @@ export function createHome(world) {
         onBack: () => {},
         onComplete: () => { closeBrief(); },
       });
-      if (cascadePanel) cascadePanel.open(el);
+      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
     };
 
     panel.querySelectorAll('.person-detail-label').forEach(label => {
@@ -1291,7 +1291,7 @@ export function createHome(world) {
         onBack: () => {},
         onComplete: () => { closeBrief(); },
       });
-      if (cascadePanel) cascadePanel.open(el);
+      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
     };
 
     panel.querySelectorAll('.vehicle-detail-label').forEach(label => {
@@ -1320,7 +1320,7 @@ export function createHome(world) {
         onBack: () => {},
         onComplete: () => { closeBrief(); },
       });
-      if (cascadePanel) cascadePanel.open(el);
+      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
     };
 
     panel.querySelectorAll('.task-detail-label').forEach(label => {
@@ -1345,7 +1345,7 @@ export function createHome(world) {
         onBack: () => {},
         onComplete: () => { closeBrief(); },
       });
-      if (cascadePanel) cascadePanel.open(el);
+      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
     };
 
     // Vehicle intake — opens when user taps "Add a vehicle" CTA
@@ -1364,14 +1364,20 @@ export function createHome(world) {
         onBack: () => {},
         onComplete: () => {
           closeBrief();
-          // Re-open vehicles brief so user sees their new vehicle
           setTimeout(() => {
-            const spot = HOTSPOT_MAPS[world.id]?.find(h => h.domain === 'vehicles');
-            if (spot) openBrief(spot);
+            const spot = HOTSPOT_MAPS[world?.id]?.find(h => h.domain === 'vehicles');
+            if (spot) {
+              openBrief(spot);
+            } else {
+              const fallbackSpot = Object.values(HOTSPOT_MAPS)
+                .flatMap(m => m)
+                .find(h => h.domain === 'vehicles');
+              if (fallbackSpot) openBrief(fallbackSpot);
+            }
           }, 400);
         },
       });
-      if (cascadePanel) cascadePanel.open(el);
+      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
     };
 
     // CTA buttons
