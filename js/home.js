@@ -1348,10 +1348,18 @@ export function createHome(world) {
         onBack: () => {},
         onComplete: () => {
           closeBrief();
-          // Re-open vehicles brief so user sees their new vehicle
+          // Reopen vehicles brief so user sees their new vehicle confirmed
           setTimeout(() => {
-            const spot = HOTSPOT_MAPS[world.id]?.find(h => h.domain === 'vehicles');
-            if (spot) openBrief(spot);
+            const spot = HOTSPOT_MAPS[world?.id]?.find(h => h.domain === 'vehicles');
+            if (spot) {
+              openBrief(spot);
+            } else {
+              // Fallback — find vehicles hotspot by domain across all maps
+              const fallbackSpot = Object.values(HOTSPOT_MAPS)
+                .flatMap(m => m)
+                .find(h => h.domain === 'vehicles');
+              if (fallbackSpot) openBrief(fallbackSpot);
+            }
           }, 400);
         },
       });

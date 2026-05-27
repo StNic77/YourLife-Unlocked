@@ -44,7 +44,7 @@ export function createCascade({ item, onBack, onComplete }) {
   const el = document.createElement('div');
   el.style.cssText = `
     position:absolute;inset:0;
-    display:flex;flex-direction:column;
+    height:100%;
     background:linear-gradient(to top,
       rgba(0,0,0,0.98) 0%,
       rgba(0,0,0,0.95) 60%,
@@ -2082,13 +2082,7 @@ async function handleIntakeProceed(state, context, el, render, close, onComplete
     state.mileage = el.querySelector('#intake-mileage')?.value.trim() || '';
     if (!state.mileage) return;
     state.step = 'step_service';
-
-    // Fire AI call in background — don't block step transition
     render('intake');
-    fetchVehicleSchedule(state).then(schedule => {
-      state.ai_schedule = schedule;
-      // No re-render needed — schedule surfaces in step_service hint
-    });
     return;
   }
 
@@ -2097,6 +2091,13 @@ async function handleIntakeProceed(state, context, el, render, close, onComplete
     state.last_oil_mileage = el.querySelector('#intake-last-oil-mileage')?.value.trim() || '';
     state.interval_km      = el.querySelector('#intake-interval')?.value.trim()         || '';
     state.step = 'step_history';
+
+    // Fire AI call now — oil date and mileage are known
+    // Don't block step transition; schedule arrives before user reaches review
+    fetchVehicleSchedule(state).then(schedule => {
+      state.ai_schedule = schedule;
+    });
+
     render('intake');
     return;
   }
