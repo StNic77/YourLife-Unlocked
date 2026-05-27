@@ -343,7 +343,7 @@ Return JSON with these fields (use null only where genuinely unknown):
   "notes": "string or null — confirmed known issues or TSBs for this exact year and engine",
   "vehicle_facts": {
     "timing_system": "string — confirm chain or belt. If belt include OEM replacement interval in km.",
-    "serpentine_belt": "string — exact quantity and OEM replacement interval e.g. '2 belts — serpentine at 160,000 km, accessory belt at 100,000 km'.",
+    "serpentine_belt": "string — list ALL drive belts on this engine including serpentine, AC compressor belt, and any other accessory belts. Include quantity, individual names, and OEM replacement interval for each. e.g. '2 belts — serpentine belt at 100,000 km, AC compressor belt at 100,000 km, typically replaced together'.",
     "spark_plugs": "string — exact plug type, electrode gap in mm, OEM replacement interval.",
     "transmission_fluid": "string — exact fluid spec and OEM change interval based on the user-specified transmission type. If manual: correct gear oil spec not ATF. If modified: fluid appropriate for the specified configuration.",
     "transmission_type": "string — use the user-provided transmission type as authoritative. Include specific type e.g. '6-speed manual' or '8-speed automatic'.",
