@@ -30,6 +30,22 @@ const DEV_HOTSPOTS = new URLSearchParams(window.location.search).get('dev') === 
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
+// UTILITIES
+// ---------------------------------------------------------------------------
+
+// Derives age in years from a birthday string (e.g. "March 14 2019", "March 14").
+// Returns null if the birthday string doesn't contain a year.
+function computeAge(birthday) {
+  if (!birthday) return null;
+  const match = birthday.match(/\b(19|20)\d{2}\b/);
+  if (!match) return null;
+  const birthYear = parseInt(match[0], 10);
+  const now = new Date();
+  const age = now.getFullYear() - birthYear;
+  return age > 0 && age < 120 ? age : null;
+}
+
+// ---------------------------------------------------------------------------
 // HOTSPOT MAPS
 // Each world defines its interactive objects.
 // x, y: percentage position of the hotspot centre in the room image.
@@ -463,7 +479,7 @@ function buildPrimaryBrief(team, onboard, world) {
         label: child.name,
         value: childBday
           ? `Birthday ${childBday.body.toLowerCase()}`
-          : child.age ? `${child.age} years old` : '',
+          : (computeAge(child.birthday) || child.age) ? `${computeAge(child.birthday) || child.age} years old` : '',
         urgent: !!childBday,
         person_id: `child_${idx}`,
       });
@@ -1201,7 +1217,7 @@ export function createHome(world) {
           closeBrief();
         },
       });
-      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
+      if (cascadePanel) cascadePanel.open(el);
     };
 
     panel.querySelectorAll('.cascade-open-btn').forEach(btn => {
@@ -1232,7 +1248,7 @@ export function createHome(world) {
       const detailItem = {
         id:    `person_detail_${personId}`,
         title: person.name || 'Person',
-        body:  personType === 'partner' ? person.profession || 'Partner' : `${person.age ? person.age + ' years old' : ''}${person.whose ? ' · ' + person.whose : ''}`,
+        body:  personType === 'partner' ? person.profession || 'Partner' : `${(computeAge(person.birthday) || person.age) ? (computeAge(person.birthday) || person.age) + ' years old' : ''}${person.whose ? ' · ' + person.whose : ''}`,
         cascade: {
           type:    'person_detail',
           context: { person_id: personId },
@@ -1244,7 +1260,7 @@ export function createHome(world) {
         onBack: () => {},
         onComplete: () => { closeBrief(); },
       });
-      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
+      if (cascadePanel) cascadePanel.open(el);
     };
 
     panel.querySelectorAll('.person-detail-label').forEach(label => {
@@ -1275,7 +1291,7 @@ export function createHome(world) {
         onBack: () => {},
         onComplete: () => { closeBrief(); },
       });
-      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
+      if (cascadePanel) cascadePanel.open(el);
     };
 
     panel.querySelectorAll('.vehicle-detail-label').forEach(label => {
@@ -1304,7 +1320,7 @@ export function createHome(world) {
         onBack: () => {},
         onComplete: () => { closeBrief(); },
       });
-      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
+      if (cascadePanel) cascadePanel.open(el);
     };
 
     panel.querySelectorAll('.task-detail-label').forEach(label => {
@@ -1329,7 +1345,7 @@ export function createHome(world) {
         onBack: () => {},
         onComplete: () => { closeBrief(); },
       });
-      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
+      if (cascadePanel) cascadePanel.open(el);
     };
 
     // Vehicle intake — opens when user taps "Add a vehicle" CTA
@@ -1348,22 +1364,14 @@ export function createHome(world) {
         onBack: () => {},
         onComplete: () => {
           closeBrief();
-          // Reopen vehicles brief so user sees their new vehicle confirmed
+          // Re-open vehicles brief so user sees their new vehicle
           setTimeout(() => {
-            const spot = HOTSPOT_MAPS[world?.id]?.find(h => h.domain === 'vehicles');
-            if (spot) {
-              openBrief(spot);
-            } else {
-              // Fallback — find vehicles hotspot by domain across all maps
-              const fallbackSpot = Object.values(HOTSPOT_MAPS)
-                .flatMap(m => m)
-                .find(h => h.domain === 'vehicles');
-              if (fallbackSpot) openBrief(fallbackSpot);
-            }
+            const spot = HOTSPOT_MAPS[world.id]?.find(h => h.domain === 'vehicles');
+            if (spot) openBrief(spot);
           }, 400);
         },
       });
-      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
+      if (cascadePanel) cascadePanel.open(el);
     };
 
     // CTA buttons

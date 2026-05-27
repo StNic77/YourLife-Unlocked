@@ -499,24 +499,29 @@ export function createTeam(world) {
       const childPronoun = childPronounRaw === 'skip' ? null : childPronounRaw;
 
       await setContent(inputCard({
-        prompt: `How old is ${name}?`,
-        placeholder: 'Age',
-        inputId: 'team-input',
-      }));
-
-      const age = await awaitInput('team-input');
-      if (age === null) return;
-
-      // --- BIRTHDAY (skippable) ---
-      await setContent(inputCard({
         prompt: `When is ${name}'s birthday?`,
-        placeholder: 'e.g. March 14',
+        placeholder: 'e.g. March 14 or March 14 2019',
         inputId: 'team-input',
       }));
 
-      const birthday = await awaitInput('team-input'); // null if skipped — that's fine
+      const birthday = await awaitInput('team-input'); // null if skipped
 
-      teamData.children.push({ name, pronoun: childPronoun, age, birthday: birthday || null });
+      // Only ask age if birthday doesn't include a year — or was skipped
+      const birthdayHasYear = birthday && /\b(19|20)\d{2}\b/.test(birthday);
+      let age = null;
+
+      if (!birthdayHasYear) {
+        await setContent(inputCard({
+          prompt: birthdayHasYear === false && birthday
+            ? `What year was ${name} born, or roughly how old are they?`
+            : `How old is ${name}?`,
+          placeholder: 'e.g. 7',
+          inputId: 'team-input',
+        }));
+        age = await awaitInput('team-input'); // null if skipped — fine
+      }
+
+      teamData.children.push({ name, pronoun: childPronoun, birthday: birthday || null, age: age || null });
       childIndex++;
 
       // After each child — offer to add another or continue
