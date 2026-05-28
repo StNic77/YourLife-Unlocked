@@ -308,20 +308,33 @@ Return JSON: { "city": "string", "province_code": "string", "province_name": "st
   // AI contract: structured JSON only — no preamble, no explanation.
   // ---------------------------------------------------------------------------
 
-  async getVehicleSchedule({ year, make, model, variant, vin, transmission, mileage, last_oil_date, last_oil_mileage, interval_km }) {
+  async getVehicleSchedule({ year, make, model, variant, vin, transmission, mileage, last_oil_date, last_oil_mileage, interval_km, service_history }) {
     const system = `You are a vehicle maintenance data service for a personal life app.
 Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
 
 ACCURACY RULES:
 1. Return your best confirmed knowledge for this exact vehicle. Be specific.
 2. If a VIN is provided, use it as the primary identifier to confirm engine and trim.
-3. If the user has specified a transmission type, that is authoritative — use it to return the correct fluid spec. Do not override the user's stated transmission type.
+3. If the user has specified a transmission type, that is authoritative — use it to constrain all transmission-related output including type, fluid spec, service intervals, and upcoming items. Do not infer or override the transmission type from the VIN or model defaults.
 4. For vehicle_facts: return null only if you have conflicting information or genuinely no data. Do not return null merely because you are uncertain — return your best knowledge and note uncertainty in the notes field.
-5. Distances in km for Canadian users.`;
+5. If service history is provided, use it to inform upcoming_items and notes. Custom repairs and modifications are relevant context.
+6. Distances in km for Canadian users.`;
 
     const vehicleDesc = [year, make, model, variant].filter(Boolean).join(' ') || 'unknown vehicle';
     const today = new Date().toISOString().split('T')[0];
     const transNote = transmission ? `\nTransmission: ${transmission} — this is authoritative. Use it to constrain all transmission-related output including type, fluid spec, service intervals, and upcoming items. Do not infer or override the transmission type from the VIN or model defaults.` : '';
+
+    let historyNote = '';
+    if (service_history?.length) {
+      const items = service_history.map(h => {
+        const parts = [h.label || h.type];
+        if (h.date) parts.push(`(${h.date})`);
+        if (h.mileage) parts.push(`at ${h.mileage} km`);
+        if (h.notes) parts.push(`— ${h.notes}`);
+        return parts.join(' ');
+      });
+      historyNote = `\nKnown service history:\n${items.map(i => `- ${i}`).join('\n')}`;
+    }
 
     const messages = [{
       role: 'user',
@@ -329,7 +342,7 @@ ACCURACY RULES:
 Today's date: ${today}.
 Current mileage: ${mileage} km.
 Last oil change: ${last_oil_date || 'unknown'} at ${last_oil_mileage || 'unknown'} km.
-Preferred oil change interval: ${interval_km || 8000} km.
+Preferred oil change interval: ${interval_km || 8000} km.${historyNote}
 If driving history is insufficient to estimate a date, assume 1,500 km/month. Calculate next_oil_change_date forward from today's date. Never return a date in the past. Never return null for next_oil_change_date if next_oil_change_km is known.
 
 Return JSON with these fields (use null only where genuinely unknown):
@@ -340,7 +353,7 @@ Return JSON with these fields (use null only where genuinely unknown):
   "upcoming_items": [
     { "id": "string", "label": "string", "due_km": number, "urgency": "now|soon|watch" }
   ],
-  "notes": "string or null — confirmed known issues or TSBs for this exact year and engine",
+  "notes": "string or null — confirmed known issues or TSBs for this exact year and engine. Reference service history where relevant.",
   "vehicle_facts": {
     "timing_system": "string — confirm chain or belt. If belt include OEM replacement interval in km.",
     "serpentine_belt": "string — list ALL drive belts on this engine including serpentine, AC compressor belt, and any other accessory belts. Include quantity, individual names, and OEM replacement interval for each. e.g. '2 belts — serpentine belt at 100,000 km, AC compressor belt at 100,000 km, typically replaced together'.",

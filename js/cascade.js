@@ -160,8 +160,8 @@ export function createCascade({ item, onBack, onComplete }) {
           ${content}
         </div>
 
-        <!-- Change route — only shown when a route is active -->
-        ${hasRoute ? `
+        <!-- Change route — only shown on multi-route cascades, not on detail or intake views -->
+        ${hasRoute && cascade?.type !== 'vehicle_detail' && cascade?.type !== 'person_detail' && cascade?.type !== 'vehicle_intake' ? `
           <div style="margin-top:36px;">
             <button id="cascade-change-route" style="
               font-family:var(--font-sans);font-weight:200;
@@ -502,6 +502,7 @@ export function createCascade({ item, onBack, onComplete }) {
               last_oil_date:    v.last_oil_date    || '',
               last_oil_mileage: v.last_oil_mileage ? String(v.last_oil_mileage) : '',
               interval_km:      v.preferred_interval_km ? String(v.preferred_interval_km) : '8000',
+              service_history:  v.service_history || [],
             });
 
             console.log('[vehicle] refresh facts response:', JSON.stringify(schedule, null, 2));
@@ -2218,6 +2219,7 @@ async function fetchVehicleSchedule(state) {
       last_oil_date:     state.last_oil_date,
       last_oil_mileage:  state.last_oil_mileage,
       interval_km:       state.interval_km,
+      service_history:   state.history      || [],
     });
   } catch (err) {
     console.warn('[intake] AI schedule fetch failed:', err);
@@ -2384,7 +2386,12 @@ function buildVehicleDetailHTML(v) {
 
   // ── Service history ───────────────────────────────────────────────────────
   if (v.service_history?.length) {
-    const sorted = [...v.service_history].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const sorted = [...v.service_history].sort((a, b) => {
+      if (!a.date && !b.date) return 0;
+      if (!a.date) return 1;
+      if (!b.date) return -1;
+      return new Date(b.date) - new Date(a.date);
+    });
     const rows = sorted.map((s, i) => {
       const idx = v.service_history.indexOf(s);
       return buildEditableHistoryRow(v.id, 'service_history', idx, s);
