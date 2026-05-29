@@ -318,7 +318,8 @@ ACCURACY RULES:
 3. If the user has specified a transmission type, that is authoritative — use it to constrain all transmission-related output including type, fluid spec, service intervals, and upcoming items. Do not infer or override the transmission type from the VIN or model defaults.
 4. For vehicle_facts: return null only if you have conflicting information or genuinely no data. Do not return null merely because you are uncertain — return your best knowledge and note uncertainty in the notes field.
 5. If service history is provided, use it to inform upcoming_items and notes. Custom repairs and modifications are relevant context.
-6. Distances in km for Canadian users.`;
+6. Distances in km for Canadian users.
+7. BELT ACCURACY — CRITICAL: Many engines have more than one accessory drive belt. You must identify and list every belt individually. The Mazda SKYACTIV-G engine (used in 2012–2018 Mazda3, CX-5, and others) has TWO belts: a serpentine belt driving the alternator and power steering pump, and a separate short belt driving only the AC compressor. These share a common pulley but are distinct parts replaced separately or together. Never collapse multiple belts into a single entry. If an engine has 2 belts, list 2 belts with individual names, part contexts, and intervals.`;
 
     const vehicleDesc = [year, make, model, variant].filter(Boolean).join(' ') || 'unknown vehicle';
     const today = new Date().toISOString().split('T')[0];
@@ -356,7 +357,7 @@ Return JSON with these fields (use null only where genuinely unknown):
   "notes": "string or null — confirmed known issues or TSBs for this exact year and engine. Reference service history where relevant.",
   "vehicle_facts": {
     "timing_system": "string — confirm chain or belt. If belt include OEM replacement interval in km.",
-    "serpentine_belt": "string — list ALL drive belts on this engine including serpentine, AC compressor belt, and any other accessory belts. Include quantity, individual names, and OEM replacement interval for each. e.g. '2 belts — serpentine belt at 100,000 km, AC compressor belt at 100,000 km, typically replaced together'.",
+    "serpentine_belt": "string — REQUIRED: identify every accessory drive belt on this specific engine individually. Many engines have 2 or more belts. List each belt by name (e.g. serpentine belt, AC compressor belt, power steering belt) with its OEM replacement interval. If this engine has 2 belts, your answer must name both. Never say '1 single belt drives all accessories' if that is not confirmed for this exact engine. Example for SKYACTIV-G: '2 belts — serpentine belt (alternator + power steering, ~100,000 km), AC compressor belt (separate short belt, ~100,000 km) — typically replaced together but are distinct parts'.",
     "spark_plugs": "string — exact plug type, electrode gap in mm, OEM replacement interval.",
     "transmission_fluid": "string — exact fluid spec and OEM change interval based on the user-specified transmission type. If manual: correct gear oil spec not ATF. If modified: fluid appropriate for the specified configuration.",
     "transmission_type": "string — use the user-provided transmission type as authoritative. Include specific type e.g. '6-speed manual' or '8-speed automatic'.",

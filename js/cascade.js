@@ -663,16 +663,16 @@ export function createCascade({ item, onBack, onComplete }) {
 
           form.innerHTML = `
             <div style="display:flex;flex-direction:column;gap:8px;padding:8px 0 4px;">
-              <input class="h-type"  placeholder="type"     value="\${entry.type  || entry.label || ''}"
-                style="\${editInputStyle()}" />
-              <input class="h-date"  placeholder="date (e.g. 2025-01-15)"  value="\${entry.date  || ''}"
-                type="text" style="\${editInputStyle()}" />
-              <input class="h-km"    placeholder="km"       value="\${entry.mileage || entry.mileage_approx || ''}"
-                inputmode="numeric"  style="\${editInputStyle()}" />
-              <input class="h-shop"  placeholder="shop"     value="\${entry.shop  || ''}"
-                style="\${editInputStyle()}" />
-              <input class="h-notes" placeholder="notes"    value="\${entry.notes || ''}"
-                style="\${editInputStyle()}" />
+              <input class="h-type"  placeholder="type"     value="${entry.label || entry.type?.replace(/_/g,' ') || ''}"
+                style="${editInputStyle()}" />
+              <input class="h-date"  placeholder="date (e.g. 2025-01-15)"  value="${entry.date  || ''}"
+                type="text" style="${editInputStyle()}" />
+              <input class="h-km"    placeholder="km"       value="${entry.mileage || entry.mileage_approx || ''}"
+                inputmode="numeric"  style="${editInputStyle()}" />
+              <input class="h-shop"  placeholder="shop"     value="${entry.shop  || ''}"
+                style="${editInputStyle()}" />
+              <input class="h-notes" placeholder="notes"    value="${entry.notes || ''}"
+                style="${editInputStyle()}" />
               <div style="display:flex;gap:12px;margin-top:4px;">
                 <button class="h-save" style="
                   font-family:var(--font-sans);font-weight:300;
@@ -698,14 +698,16 @@ export function createCascade({ item, onBack, onComplete }) {
           summary.style.display = 'none';
           form.style.display    = 'block';
 
-          form.querySelector('.h-save').addEventListener('click', () => {
+          form.querySelector('.h-save').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const typeFieldVal = form.querySelector('.h-type').value.trim();
             const updated = {
-              type:    form.querySelector('.h-type').value.trim()  || entry.type  || entry.label,
+              type:    entry.type || typeFieldVal || entry.label,
+              label:   typeFieldVal || entry.label || entry.type?.replace(/_/g,' ') || null,
               date:    form.querySelector('.h-date').value.trim()  || entry.date,
               mileage: parseInt(form.querySelector('.h-km').value.trim(), 10) || entry.mileage || entry.mileage_approx || null,
               shop:    form.querySelector('.h-shop').value.trim()  || entry.shop  || null,
               notes:   form.querySelector('.h-notes').value.trim() || entry.notes || null,
-              label:   form.querySelector('.h-type').value.trim()  || entry.label || null,
             };
             const fresh = store.get('vehicles') || [];
             const fi    = fresh.findIndex(v => v.id === vehicleId);
@@ -716,7 +718,8 @@ export function createCascade({ item, onBack, onComplete }) {
             render('detail');
           });
 
-          form.querySelector('.h-delete').addEventListener('click', () => {
+          form.querySelector('.h-delete').addEventListener('click', (e) => {
+            e.stopPropagation();
             const fresh = store.get('vehicles') || [];
             const fi    = fresh.findIndex(v => v.id === vehicleId);
             if (fi >= 0 && fresh[fi][collection]) {
@@ -726,7 +729,8 @@ export function createCascade({ item, onBack, onComplete }) {
             render('detail');
           });
 
-          form.querySelector('.h-cancel').addEventListener('click', () => {
+          form.querySelector('.h-cancel').addEventListener('click', (e) => {
+            e.stopPropagation();
             form.style.display    = 'none';
             summary.style.display = 'block';
           });
