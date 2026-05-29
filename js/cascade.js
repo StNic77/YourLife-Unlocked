@@ -301,21 +301,23 @@ export function createCascade({ item, onBack, onComplete }) {
           const current  = valueDiv?.innerText?.replace(/[—]/g, '').trim() || '';
 
           const input = document.createElement('input');
-          input.type  = type === 'date' ? 'date' : 'text';
+          input.type  = 'text';
           if (type === 'date' && current) {
             const d = new Date(current);
             if (!isNaN(d)) input.value = d.toISOString().split('T')[0];
+            else input.value = current;
           } else {
             input.value = current;
           }
+          input.placeholder = type === 'date' ? 'e.g. 2025-01-15' : '';
           input.style.cssText = `
             width:100%;box-sizing:border-box;
             background:rgba(240,235,218,0.06);
             border:none;border-bottom:0.5px solid rgba(210,160,60,0.4);
             padding:4px 2px;
             font-family:var(--font-sans);font-weight:300;
-            font-size:13px;color:rgba(240,235,218,0.88);
-            outline:none;color-scheme:dark;
+            font-size:14px;color:rgba(240,235,218,0.88);
+            outline:none;
           `;
           if (valueDiv) valueDiv.replaceWith(input);
           input.focus();
@@ -352,6 +354,9 @@ export function createCascade({ item, onBack, onComplete }) {
     if (cascade.type === 'maintenance_intake') {
       const s = cascade.context._mState || (cascade.context._mState = { step: 'label' });
 
+      // Wire calendar picker for last_done step
+      attachCalendarListeners(el);
+
       const proceedBtn = el.querySelector('#m-proceed');
       if (proceedBtn) {
         proceedBtn.addEventListener('click', () => {
@@ -367,7 +372,10 @@ export function createCascade({ item, onBack, onComplete }) {
             s.step = 'last_done';
             render('intake');
           } else if (s.step === 'last_done') {
-            s.last_done = el.querySelector('#m-last-done')?.value.trim() || '';
+            // Read from hidden ISO field (set by calendar picker or text blur)
+            const hiddenDate = el.querySelector('#m-last-done');
+            const textDate   = el.querySelector('#m-last-done-text');
+            s.last_done = (hiddenDate?.value || textDate?.value || '').trim();
             maintenanceIntakeRenderer.complete(cascade.context, 'intake', {});
             close();
             onComplete?.();
@@ -419,6 +427,7 @@ export function createCascade({ item, onBack, onComplete }) {
       if (cascade.context._logMode) {
         const saveBtn = el.querySelector('#log-service-save');
         if (saveBtn) {
+          attachCalendarListeners(el); // wire log-date calendar picker
           saveBtn.addEventListener('click', () => {
             const dateVal    = el.querySelector('#log-date')?.value.trim()    || new Date().toISOString().split('T')[0];
             const mileageVal = el.querySelector('#log-mileage')?.value.trim() || '';
@@ -596,25 +605,26 @@ export function createCascade({ item, onBack, onComplete }) {
           const currentText = valueDiv?.innerText?.replace(/[—]/g, '').trim() || '';
 
           const input = document.createElement('input');
-          input.type  = type === 'date' ? 'date' : 'text';
+          input.type  = type === 'date' ? 'text' : 'text';
           if (type === 'date' && currentText) {
             // Try to parse display date back to ISO
             const d = new Date(currentText);
             if (!isNaN(d)) input.value = d.toISOString().split('T')[0];
+            else input.value = currentText;
           } else {
             // Strip trailing ' km' or similar for numeric fields
             input.value = currentText.replace(/[\s,km]+$/i, '').replace(/,/g, '');
           }
+          input.placeholder = type === 'date' ? 'e.g. 2025-01-15' : '';
           input.style.cssText = `
             width:100%;box-sizing:border-box;
             background:rgba(240,235,218,0.06);
             border:none;border-bottom:0.5px solid rgba(210,160,60,0.4);
             padding:4px 2px;
             font-family:var(--font-sans);font-weight:300;
-            font-size:13px;letter-spacing:0.03em;
+            font-size:14px;letter-spacing:0.03em;
             color:rgba(240,235,218,0.88);
             outline:none;
-            color-scheme:dark;
           `;
 
           if (valueDiv) valueDiv.replaceWith(input);
@@ -655,8 +665,8 @@ export function createCascade({ item, onBack, onComplete }) {
             <div style="display:flex;flex-direction:column;gap:8px;padding:8px 0 4px;">
               <input class="h-type"  placeholder="type"     value="\${entry.type  || entry.label || ''}"
                 style="\${editInputStyle()}" />
-              <input class="h-date"  placeholder="date"     value="\${entry.date  || ''}"
-                type="date" style="\${editInputStyle()} color-scheme:dark;" />
+              <input class="h-date"  placeholder="date (e.g. 2025-01-15)"  value="\${entry.date  || ''}"
+                type="text" style="\${editInputStyle()}" />
               <input class="h-km"    placeholder="km"       value="\${entry.mileage || entry.mileage_approx || ''}"
                 inputmode="numeric"  style="\${editInputStyle()}" />
               <input class="h-shop"  placeholder="shop"     value="\${entry.shop  || ''}"
@@ -900,10 +910,243 @@ function injectCascadeKeyframes() {
       color: rgba(240,235,218,0.2);
       font-style: italic;
     }
+    /* Calendar picker */
+    .ylu-cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:2px; }
+    .ylu-cal-day {
+      aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+      font-family:var(--font-sans); font-weight:300; font-size:11px;
+      color:rgba(240,235,218,0.55); border-radius:2px; cursor:pointer;
+      transition:background 0.15s ease, color 0.15s ease;
+    }
+    .ylu-cal-day:hover { background:rgba(240,235,218,0.08); color:rgba(240,235,218,0.9); }
+    .ylu-cal-day.today { color:rgba(210,160,60,0.85); }
+    .ylu-cal-day.selected { background:rgba(210,160,60,0.18); color:rgba(240,235,218,0.95); font-weight:400; }
+    .ylu-cal-day.other-month { color:rgba(240,235,218,0.18); }
+    .ylu-cal-day.empty { cursor:default; }
+    .ylu-cal-day.empty:hover { background:transparent; }
   `;
   document.head.appendChild(style);
 }
 injectCascadeKeyframes();
+
+// ---------------------------------------------------------------------------
+// CALENDAR PICKER
+// Shared inline calendar widget. Renders above a text input so both paths work.
+// Usage: buildDateField(id, label, isoValue, opts)
+// Returns HTML string. Attach listeners via attachCalendarListeners(el).
+// ---------------------------------------------------------------------------
+
+function buildDateField(id, label, isoValue = '', opts = {}) {
+  const displayVal = isoValue ? formatDetailDate(isoValue) : '';
+  const optStr     = opts.optional ? ' <span style="color:rgba(240,235,218,0.15);">— optional</span>' : '';
+  return `
+    <div class="ylu-date-field" data-field-id="${id}" style="margin-bottom:20px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.3);margin-bottom:8px;
+      ">${label}${optStr}</div>
+
+      <!-- Text input — always present -->
+      <input
+        id="${id}-text"
+        class="intake-field ylu-date-text"
+        type="text"
+        placeholder="e.g. Jan 2025 or 2025-01-15"
+        value="${displayVal}"
+        autocomplete="off"
+        style="
+          width:100%;box-sizing:border-box;
+          background:rgba(240,235,218,0.04);
+          border:0.5px solid rgba(240,235,218,0.12);
+          border-radius:2px 2px 0 0;
+          padding:13px 16px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:15px;letter-spacing:0.02em;
+          color:rgba(240,235,218,0.88);
+          outline:none;-webkit-appearance:none;
+          border-bottom:none;
+        "
+        onfocus="this.style.borderColor='rgba(240,235,218,0.3)'"
+        onblur="this.style.borderColor='rgba(240,235,218,0.12)'"
+      />
+
+      <!-- Calendar toggle bar -->
+      <button class="ylu-cal-toggle" data-target="${id}" style="
+        width:100%;box-sizing:border-box;
+        background:rgba(240,235,218,0.02);
+        border:0.5px solid rgba(240,235,218,0.12);
+        border-top:none;
+        border-radius:0 0 2px 2px;
+        padding:7px 16px;
+        display:flex;align-items:center;gap:8px;
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.25);
+        cursor:pointer;transition:all 0.15s ease;
+        text-align:left;
+      "
+      onmouseenter="this.style.color='rgba(240,235,218,0.5)';this.style.background='rgba(240,235,218,0.04)'"
+      onmouseleave="this.style.color='rgba(240,235,218,0.25)';this.style.background='rgba(240,235,218,0.02)'"
+      >
+        <span style="font-size:12px;">📅</span> pick a date
+      </button>
+
+      <!-- Calendar panel — hidden by default -->
+      <div id="${id}-cal" class="ylu-cal-panel" style="display:none;
+        background:rgba(20,18,14,0.97);
+        border:0.5px solid rgba(240,235,218,0.1);
+        border-top:none;border-radius:0 0 4px 4px;
+        padding:14px;
+      ">
+        <!-- Nav row -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <button class="ylu-cal-prev" data-target="${id}" style="
+            font-family:var(--font-sans);font-weight:200;font-size:14px;
+            color:rgba(240,235,218,0.4);cursor:pointer;padding:4px 8px;
+            transition:color 0.15s ease;
+          "
+          onmouseenter="this.style.color='rgba(240,235,218,0.88)'"
+          onmouseleave="this.style.color='rgba(240,235,218,0.4)'"
+          >‹</button>
+          <div class="ylu-cal-month-label" data-target="${id}" style="
+            font-family:var(--font-sans);font-weight:300;
+            font-size:11px;letter-spacing:0.18em;text-transform:uppercase;
+            color:rgba(240,235,218,0.55);
+          "></div>
+          <button class="ylu-cal-next" data-target="${id}" style="
+            font-family:var(--font-sans);font-weight:200;font-size:14px;
+            color:rgba(240,235,218,0.4);cursor:pointer;padding:4px 8px;
+            transition:color 0.15s ease;
+          "
+          onmouseenter="this.style.color='rgba(240,235,218,0.88)'"
+          onmouseleave="this.style.color='rgba(240,235,218,0.4)'"
+          >›</button>
+        </div>
+        <!-- Day-of-week headers -->
+        <div class="ylu-cal-grid" style="margin-bottom:4px;">
+          ${['S','M','T','W','T','F','S'].map(d => `
+            <div style="
+              font-family:var(--font-sans);font-weight:200;
+              font-size:9px;letter-spacing:0.15em;text-transform:uppercase;
+              color:rgba(240,235,218,0.2);
+              display:flex;align-items:center;justify-content:center;
+              padding:2px 0;
+            ">${d}</div>
+          `).join('')}
+        </div>
+        <!-- Day grid — populated by JS -->
+        <div class="ylu-cal-days ylu-cal-grid" data-target="${id}"></div>
+      </div>
+
+      <!-- Hidden ISO value store — read by intake handlers -->
+      <input id="${id}" type="hidden" value="${isoValue}" />
+    </div>
+  `;
+}
+
+// Attaches calendar interaction to all .ylu-cal-toggle buttons within el.
+// Call once after any render that contains buildDateField() output.
+function attachCalendarListeners(el) {
+  el.querySelectorAll('.ylu-cal-toggle').forEach(toggle => {
+    if (toggle._calInit) return;
+    toggle._calInit = true;
+    const targetId  = toggle.dataset.target;
+    const panel     = el.querySelector(`#${targetId}-cal`);
+    const textInput = el.querySelector(`#${targetId}-text`);
+    const hidden    = el.querySelector(`#${targetId}`);
+    if (!panel || !textInput || !hidden) return;
+
+    // Calendar state
+    const state = { year: 0, month: 0 };
+
+    function parseCurrentValue() {
+      const iso = hidden.value;
+      if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+        const d = new Date(iso + 'T12:00:00');
+        return isNaN(d) ? null : d;
+      }
+      return null;
+    }
+
+    function initMonth() {
+      const d = parseCurrentValue() || new Date();
+      state.year  = d.getFullYear();
+      state.month = d.getMonth();
+    }
+
+    function renderCalendar() {
+      const monthNames = ['January','February','March','April','May','June',
+                          'July','August','September','October','November','December'];
+      const label = el.querySelector(`.ylu-cal-month-label[data-target="${targetId}"]`);
+      if (label) label.textContent = `${monthNames[state.month]} ${state.year}`;
+
+      const grid      = el.querySelector(`.ylu-cal-days[data-target="${targetId}"]`);
+      if (!grid) return;
+      const today     = new Date();
+      const selected  = parseCurrentValue();
+      const firstDay  = new Date(state.year, state.month, 1).getDay();
+      const daysInMonth = new Date(state.year, state.month + 1, 0).getDate();
+
+      let html = '';
+      for (let i = 0; i < firstDay; i++) {
+        html += `<div class="ylu-cal-day empty"></div>`;
+      }
+      for (let d = 1; d <= daysInMonth; d++) {
+        const isToday    = today.getFullYear() === state.year && today.getMonth() === state.month && today.getDate() === d;
+        const isSelected = selected && selected.getFullYear() === state.year && selected.getMonth() === state.month && selected.getDate() === d;
+        const iso = `${state.year}-${String(state.month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        html += `<div class="ylu-cal-day${isToday ? ' today' : ''}${isSelected ? ' selected' : ''}"
+          data-iso="${iso}" data-target="${targetId}">${d}</div>`;
+      }
+      grid.innerHTML = html;
+
+      // Day click listeners
+      grid.querySelectorAll('.ylu-cal-day[data-iso]').forEach(day => {
+        day.addEventListener('click', () => {
+          const iso = day.dataset.iso;
+          hidden.value    = iso;
+          textInput.value = formatDetailDate(iso);
+          panel.style.display = 'none';
+          toggle.style.display = '';
+          renderCalendar(); // re-render to show selection
+          // Fire change so intake handlers can read the value
+          hidden.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+      });
+    }
+
+    // Toggle open/close
+    toggle.addEventListener('click', () => {
+      const isOpen = panel.style.display !== 'none';
+      if (isOpen) {
+        panel.style.display = 'none';
+      } else {
+        initMonth();
+        panel.style.display = 'block';
+        renderCalendar();
+      }
+    });
+
+    // Prev/next month
+    const prev = el.querySelector(`.ylu-cal-prev[data-target="${targetId}"]`);
+    const next = el.querySelector(`.ylu-cal-next[data-target="${targetId}"]`);
+    if (prev) prev.addEventListener('click', e => { e.stopPropagation(); state.month--; if (state.month < 0) { state.month = 11; state.year--; } renderCalendar(); });
+    if (next) next.addEventListener('click', e => { e.stopPropagation(); state.month++; if (state.month > 11) { state.month = 0; state.year++; } renderCalendar(); });
+
+    // Text input — parse on blur and sync hidden value
+    textInput.addEventListener('blur', () => {
+      const raw = textInput.value.trim();
+      if (!raw) { hidden.value = ''; return; }
+      const d = new Date(raw);
+      if (!isNaN(d)) {
+        hidden.value = d.toISOString().split('T')[0];
+        textInput.value = formatDetailDate(hidden.value);
+        renderCalendar();
+      }
+    });
+  });
+}
 
 // ---------------------------------------------------------------------------
 // HC-1 — VEHICLE REGISTRATION
@@ -1673,7 +1916,7 @@ function buildServiceStep(state, context) {
     ">Last oil change — when and how many kilometres?<br>
     <span style="font-size:11px;color:rgba(240,235,218,0.2);">If you're not sure, give me your best guess.</span></div>
 
-    ${buildIntakeInput('intake-last-oil-date',    'Date',        'e.g. Jan 2025',  state.last_oil_date,    { optional: false })}
+    ${buildDateField('intake-last-oil-date', 'Date', state.last_oil_date || '', {})}
     ${buildIntakeInput('intake-last-oil-mileage', 'Kilometres',  'e.g. 76000',     state.last_oil_mileage, { inputmode: 'numeric', optional: false })}
     ${buildIntakeInput('intake-interval',         'Your preferred interval (km)', 'e.g. 8000', state.interval_km, { inputmode: 'numeric', optional: true })}
 
@@ -2028,6 +2271,9 @@ export function attachIntakeListeners(el, cascade, render, close, onComplete) {
     });
   }
 
+  // Wire calendar pickers for any date fields in current step
+  attachCalendarListeners(el);
+
   // Skip button — skips optional step
   const skipBtn = el.querySelector('#intake-skip');
   if (skipBtn) {
@@ -2166,7 +2412,11 @@ async function handleIntakeProceed(state, context, el, render, close, onComplete
   }
 
   if (state.step === 'step_service') {
-    state.last_oil_date    = el.querySelector('#intake-last-oil-date')?.value.trim()    || '';
+    // Date field now uses buildDateField — read from hidden input
+    const dateHidden = el.querySelector('#intake-last-oil-date');
+    const dateText   = el.querySelector('#intake-last-oil-date-text');
+    // Prefer hidden ISO value; fall back to raw text entry
+    state.last_oil_date    = (dateHidden?.value || dateText?.value || '').trim();
     state.last_oil_mileage = el.querySelector('#intake-last-oil-mileage')?.value.trim() || '';
     state.interval_km      = el.querySelector('#intake-interval')?.value.trim()         || '';
     state.step = 'step_history';
@@ -2509,7 +2759,7 @@ function buildEditableLine(vehicleId, field, label, value, type) {
       ">${label}</div>
       <div class="editable-value" style="
         font-family:var(--font-sans);font-weight:300;
-        font-size:13px;letter-spacing:0.03em;
+        font-size:15px;letter-spacing:0.02em;
         color:rgba(240,235,218,0.75);line-height:1.4;
         min-height:18px;
       ">${displayVal}</div>
@@ -2612,7 +2862,7 @@ function buildReadonlyLine(label, value) {
       ">${label}</div>
       <div style="
         font-family:var(--font-sans);font-weight:300;
-        font-size:13px;color:rgba(240,235,218,0.4);
+        font-size:15px;color:rgba(240,235,218,0.4);
       ">${value}</div>
     </div>
   `;
@@ -2694,16 +2944,55 @@ function buildLogServiceHTML(v) {
         font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
         color:rgba(240,235,218,0.3);margin-bottom:8px;
       ">Date</div>
-      <input id="log-date" type="date" value="${today}" style="
+      <input id="log-date-text" class="intake-field ylu-date-text" type="text"
+        placeholder="e.g. Jan 2025 or 2025-01-15"
+        value="${formatDetailDate(today)}"
+        autocomplete="off"
+        style="
+          width:100%;box-sizing:border-box;
+          background:rgba(240,235,218,0.04);
+          border:0.5px solid rgba(240,235,218,0.12);
+          border-radius:2px 2px 0 0;
+          padding:13px 16px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:15px;letter-spacing:0.02em;
+          color:rgba(240,235,218,0.85);
+          outline:none;-webkit-appearance:none;
+          border-bottom:none;
+        "
+        onfocus="this.style.borderColor='rgba(240,235,218,0.3)'"
+        onblur="this.style.borderColor='rgba(240,235,218,0.12)'"
+      />
+      <button class="ylu-cal-toggle" data-target="log-date" style="
         width:100%;box-sizing:border-box;
-        background:rgba(240,235,218,0.04);
-        border:0.5px solid rgba(240,235,218,0.12);
-        border-radius:2px;padding:14px 16px;
-        font-family:var(--font-sans);font-weight:300;
-        font-size:14px;color:rgba(240,235,218,0.85);
-        outline:none;-webkit-appearance:none;
-        color-scheme:dark;
-      " />
+        background:rgba(240,235,218,0.02);
+        border:0.5px solid rgba(240,235,218,0.12);border-top:none;
+        border-radius:0 0 2px 2px;
+        padding:7px 16px;display:flex;align-items:center;gap:8px;
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.25);cursor:pointer;transition:all 0.15s ease;text-align:left;
+      "
+      onmouseenter="this.style.color='rgba(240,235,218,0.5)';this.style.background='rgba(240,235,218,0.04)'"
+      onmouseleave="this.style.color='rgba(240,235,218,0.25)';this.style.background='rgba(240,235,218,0.02)'"
+      ><span style="font-size:12px;">📅</span> pick a date</button>
+      <div id="log-date-cal" class="ylu-cal-panel" style="display:none;
+        background:rgba(20,18,14,0.97);border:0.5px solid rgba(240,235,218,0.1);
+        border-top:none;border-radius:0 0 4px 4px;padding:14px;
+      ">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <button class="ylu-cal-prev" data-target="log-date" style="font-family:var(--font-sans);font-weight:200;font-size:14px;color:rgba(240,235,218,0.4);cursor:pointer;padding:4px 8px;transition:color 0.15s ease;"
+          onmouseenter="this.style.color='rgba(240,235,218,0.88)'" onmouseleave="this.style.color='rgba(240,235,218,0.4)'">‹</button>
+          <div class="ylu-cal-month-label" data-target="log-date" style="font-family:var(--font-sans);font-weight:300;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:rgba(240,235,218,0.55);"></div>
+          <button class="ylu-cal-next" data-target="log-date" style="font-family:var(--font-sans);font-weight:200;font-size:14px;color:rgba(240,235,218,0.4);cursor:pointer;padding:4px 8px;transition:color 0.15s ease;"
+          onmouseenter="this.style.color='rgba(240,235,218,0.88)'" onmouseleave="this.style.color='rgba(240,235,218,0.4)'">›</button>
+        </div>
+        <div class="ylu-cal-grid" style="margin-bottom:4px;">
+          ${['S','M','T','W','T','F','S'].map(d => `<div style="font-family:var(--font-sans);font-weight:200;font-size:9px;letter-spacing:0.15em;text-transform:uppercase;color:rgba(240,235,218,0.2);display:flex;align-items:center;justify-content:center;padding:2px 0;">${d}</div>`).join('')}
+        </div>
+        <div class="ylu-cal-days ylu-cal-grid" data-target="log-date"></div>
+      </div>
+      <input id="log-date" type="hidden" value="${today}" />
     </div>
 
     <div style="margin-bottom:18px;">
@@ -3010,7 +3299,7 @@ function buildMaintenanceIntakeStep(s) {
         When was it last done?<br>
         <span style="font-size:11px;color:rgba(240,235,218,0.2);">Helps calculate when it's next due.</span>
       </div>
-      ${buildMIntakeInput('m-last-done', 'Date last done', '', s.last_done || '', false, 'date')}
+      ${buildDateField('m-last-done', 'Date last done', s.last_done || '', {})}
       <div style="display:flex;align-items:center;margin-top:8px;">
         ${buildMProceed('Add task')}
         ${buildMSkip("I don't know")}
@@ -3158,7 +3447,7 @@ function buildPersonEditableLine(personId, field, label, value) {
       ">${label}</div>
       <div class="person-editable-value" style="
         font-family:var(--font-sans);font-weight:300;
-        font-size:13px;letter-spacing:0.03em;
+        font-size:15px;letter-spacing:0.02em;
         color:rgba(240,235,218,0.75);line-height:1.4;
         min-height:18px;
       ">${displayVal}</div>
@@ -3263,7 +3552,7 @@ function buildTaskEditableLine(taskId, field, label, value, type = 'text') {
       ">${label}</div>
       <div class="task-editable-value" style="
         font-family:var(--font-sans);font-weight:300;
-        font-size:13px;letter-spacing:0.03em;
+        font-size:15px;letter-spacing:0.02em;
         color:rgba(240,235,218,0.75);min-height:18px;
       ">${displayVal}</div>
     </div>

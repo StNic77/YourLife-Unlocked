@@ -31,6 +31,13 @@ export function createTeam(world) {
   let currentStep = 0;
   let resolveComplete = null;
 
+  // Step history for back navigation at the top-level (intro → partner → children → etc.)
+  const stepHistory = [];
+
+  // Sub-step back signal — used inside cascades to step back one sub-screen
+  // Set to a function by the active cascade, cleared when cascade exits
+  let subStepBack = null;
+
   // Accumulated data — written to store on escape or completion
   const teamData = {
     partner: {},
@@ -106,7 +113,7 @@ export function createTeam(world) {
     `;
   }
 
-  function inputCard({ prompt, placeholder, inputId, reflection = null }) {
+  function inputCard({ prompt, placeholder, inputId, reflection = null, prevalue = '' }) {
     return `
       <div style="display:flex;flex-direction:column;gap:16px;">
         <div style="
@@ -127,6 +134,7 @@ export function createTeam(world) {
           id="${inputId}"
           type="text"
           placeholder="${placeholder}"
+          value="${prevalue}"
           autocomplete="off"
           style="
             background:transparent;
@@ -143,13 +151,13 @@ export function createTeam(world) {
           "
         />
         <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:4px;">
-          <button class="team-cta" data-action="next" disabled style="
+          <button class="team-cta" data-action="next" ${prevalue ? '' : 'disabled'} style="
             padding:13px 32px;
-            border:0.5px solid var(--color-cream-15);border-radius:2px;
+            border:0.5px solid ${prevalue ? 'var(--color-cream-40)' : 'var(--color-cream-15)'};border-radius:2px;
             font-family:var(--font-sans);font-weight:300;
             font-size:11px;letter-spacing:0.28em;text-transform:uppercase;
-            color:var(--color-cream-40);
-            transition:all 0.3s ease;cursor:default;
+            color:${prevalue ? 'var(--color-cream-90)' : 'var(--color-cream-40)'};
+            transition:all 0.3s ease;cursor:${prevalue ? 'pointer' : 'default'};
           ">continue</button>
           ${escapeBtn('that\'s enough for now')}
         </div>
@@ -255,187 +263,244 @@ export function createTeam(world) {
   async function runPartnerCascade() {
     const p = teamData.partner;
 
-    // --- NAME ---
-    await setContent(inputCard({
-      prompt: 'Who\'s your partner?',
-      placeholder: 'First name',
-      inputId: 'team-input',
-    }));
+    // Partner cascade step order
+    // 'profession' is inserted conditionally after 'works' if works !== 'no'
+    const PARTNER_STEPS = [
+      'name', 'pronoun', 'tenure', 'state', 'works',
+      'profession', 'birthday', 'love_language', 'closing',
+    ];
 
-    p.name = await awaitInput('team-input');
-    if (p.name === null) return; // escaped
+    let stepIdx = 0;
+    let done    = false;
+    let escaped = false;
 
-    // --- PRONOUN ---
-    await setContent(tileCard({
-      prompt: `How do you refer to ${p.name}?`,
-      tiles: [
-        { id: 'she',  label: 'She / her' },
-        { id: 'he',   label: 'He / him' },
-        { id: 'they', label: 'They / them' },
-      ],
-      multi: false,
-    }));
+    // Pending AI reflection — injected into the next screen when ready
+    let pendingReflection = null;
 
-    p.pronoun = await awaitTile({ multi: false });
-    if (p.pronoun === null) return;
+    // Register back handler with the scaffold
+    subStepBack = () => {
+      if (stepIdx > 0) {
+        stepIdx--;
+        updateBackButton();
+        runStep();
+      }
+    };
 
-    // --- TENURE ---
-    await setContent(inputCard({
-      prompt: `How long have you and ${p.name} been together?`,
-      placeholder: 'e.g. 3 years, since 2019',
-      inputId: 'team-input',
-    }));
-
-    p.tenure = await awaitInput('team-input');
-    if (p.tenure === null) return;
-
-    // --- STATE (tiles) ---
-    await setContent(tileCard({
-      prompt: 'How\'s that going, from your side?',
-      tiles: [
-        { id: 'solid',       label: 'Solid' },
-        { id: 'good',        label: 'Pretty good' },
-        { id: 'working',     label: 'We\'re working on things' },
-        { id: 'complicated', label: 'It\'s complicated' },
-        { id: 'rough',       label: 'Rough patch' },
-      ],
-      multi: false,
-    }));
-
-    p.state = await awaitTile({ multi: false });
-    if (p.state === null) return;
-
-    // Fire reflection for state — don't await, inject when ready
-    const stateReflectionPromise = api.getTeamReflection({
-      type: 'state',
-      partnerName: p.name,
-      partnerPronoun: p.pronoun || 'they',
-      tenure: p.tenure,
-      state: p.state,
-    }).catch(() => null);
-
-    // --- WORKS (tiles) — render immediately, reflection injects when ready ---
-    await setContent(tileCard({
-      prompt: `Does ${p.name} work?`,
-      tiles: [
-        { id: 'yes',          label: 'Yes' },
-        { id: 'no',           label: 'No' },
-        { id: 'part_time',    label: 'Part time' },
-        { id: 'self_employed',label: 'Self-employed' },
-      ],
-      multi: false,
-      reflection: '&nbsp;', // placeholder so reflection slot exists in DOM
-    }));
-
-    stateReflectionPromise.then(text => {
-      if (!text) return;
-      const reflEl = el.querySelector('.team-reflection');
-      if (reflEl) { reflEl.textContent = text; reflEl.style.letterSpacing = '0.04em'; }
-    });
-
-    p.works = await awaitTile({ multi: false });
-    if (p.works === null) return;
-
-    // --- PROFESSION (conditional) ---
-    if (p.works !== 'no') {
-      await setContent(inputCard({
-        prompt: `What does ${pronoun(p, 'subjective')} do?`,
-        placeholder: 'Profession or role',
-        inputId: 'team-input',
-      }));
-
-      p.profession = await awaitInput('team-input');
-      if (p.profession === null) return;
-
-      // Fire profession reflection — inject into birthday screen
-      const profReflectionPromise = api.getTeamReflection({
-        type: 'profession',
-        partnerName: p.name,
-        partnerPronoun: p.pronoun || 'they',
-        profession: p.profession,
-        state: p.state,
-      }).catch(() => null);
-
-      await setContent(inputCard({
-        prompt: `${p.name}'s birthday?`,
-        placeholder: 'e.g. March 14',
-        inputId: 'team-input',
-        reflection: '&nbsp;',
-      }));
-
-      profReflectionPromise.then(text => {
-        if (!text) return;
-        const reflEl = el.querySelector('.team-reflection');
-        if (reflEl) { reflEl.textContent = text; reflEl.style.letterSpacing = '0.04em'; }
-      });
-
-    } else {
-      await setContent(inputCard({
-        prompt: `${p.name}'s birthday?`,
-        placeholder: 'e.g. March 14',
-        inputId: 'team-input',
-      }));
+    function updatePartnerBack() {
+      subStepBack = stepIdx > 0 ? () => { stepIdx--; updateBackButton(); runStep(); } : null;
+      updateBackButton();
     }
 
-    p.birthday = await awaitInput('team-input');
-    if (p.birthday === null) return;
-
-    // Fire birthday reflection — inject into love language screen
-    const birthdayReflectionPromise = api.getTeamReflection({
-      type: 'birthday',
-      partnerName: p.name,
-      partnerPronoun: p.pronoun || 'they',
-      birthday: p.birthday,
-    }).catch(() => null);
-
-    // --- LOVE LANGUAGE ---
-    await setContent(tileCard({
-      prompt: `How does ${p.name} most feel taken care of?`,
-      tiles: [
-        { id: 'time',    label: 'Quality time' },
-        { id: 'words',   label: 'Words' },
-        { id: 'acts',    label: 'Acts of service' },
-        { id: 'touch',   label: 'Affection' },
-        { id: 'gifts',   label: 'Gifts' },
-        { id: 'unsure',  label: 'Not sure yet' },
-      ],
-      multi: false,
-      reflection: '&nbsp;',
-    }));
-
-    birthdayReflectionPromise.then(text => {
+    function injectReflection(text) {
       if (!text) return;
       const reflEl = el.querySelector('.team-reflection');
       if (reflEl) { reflEl.textContent = text; reflEl.style.letterSpacing = '0.04em'; }
-    });
+    }
 
-    p.love_language = await awaitTile({ multi: false });
-    if (p.love_language === null) return;
+    async function runStep() {
+      updatePartnerBack();
+      const step = PARTNER_STEPS[stepIdx];
 
-    // Final partner reflection — fire and inject into closing statement screen
-    const finalReflectionPromise = api.getTeamReflection({
-      type: 'partner_complete',
-      partnerName: p.name,
-      partnerPronoun: p.pronoun || 'they',
-      state: p.state,
-      love_language: p.love_language,
-      profession: p.profession || null,
-    }).catch(() => null);
+      if (step === 'name') {
+        await setContent(inputCard({
+          prompt: 'Who\'s your partner?',
+          placeholder: 'First name',
+          inputId: 'team-input',
+          prevalue: p.name || '',
+        }));
+        const val = await awaitInput('team-input');
+        if (val === null) { escaped = true; return; }
+        p.name = val;
+        stepIdx++;
+        runStep();
 
-    await setContent(statementCard({
-      text: '···',
-      ctaLabel: 'continue',
-      escapeLabel: 'that\'s enough for now',
-    }));
+      } else if (step === 'pronoun') {
+        await setContent(tileCard({
+          prompt: `How do you refer to ${p.name}?`,
+          tiles: [
+            { id: 'she',  label: 'She / her' },
+            { id: 'he',   label: 'He / him' },
+            { id: 'they', label: 'They / them' },
+          ],
+          multi: false,
+        }));
+        const val = await awaitTile({ multi: false });
+        if (val === null) { escaped = true; return; }
+        p.pronoun = val;
+        stepIdx++;
+        runStep();
 
-    finalReflectionPromise.then(text => {
-      if (!text) return;
-      const textEl = el.querySelector('#team-inner [style*="font-serif"]');
-      if (textEl) textEl.textContent = text;
-    });
+      } else if (step === 'tenure') {
+        await setContent(inputCard({
+          prompt: `How long have you and ${p.name} been together?`,
+          placeholder: 'e.g. 3 years, since 2019',
+          inputId: 'team-input',
+          prevalue: p.tenure || '',
+        }));
+        const val = await awaitInput('team-input');
+        if (val === null) { escaped = true; return; }
+        p.tenure = val;
+        stepIdx++;
+        runStep();
 
-    const next = await awaitCta();
-    if (next === 'escape') return;
+      } else if (step === 'state') {
+        await setContent(tileCard({
+          prompt: 'How\'s that going, from your side?',
+          tiles: [
+            { id: 'solid',       label: 'Solid' },
+            { id: 'good',        label: 'Pretty good' },
+            { id: 'working',     label: 'We\'re working on things' },
+            { id: 'complicated', label: 'It\'s complicated' },
+            { id: 'rough',       label: 'Rough patch' },
+          ],
+          multi: false,
+        }));
+        const val = await awaitTile({ multi: false });
+        if (val === null) { escaped = true; return; }
+        p.state = val;
+        // Fire reflection — will inject into 'works' screen
+        pendingReflection = api.getTeamReflection({
+          type: 'state',
+          partnerName: p.name,
+          partnerPronoun: p.pronoun || 'they',
+          tenure: p.tenure,
+          state: p.state,
+        }).catch(() => null);
+        stepIdx++;
+        runStep();
+
+      } else if (step === 'works') {
+        await setContent(tileCard({
+          prompt: `Does ${p.name} work?`,
+          tiles: [
+            { id: 'yes',           label: 'Yes' },
+            { id: 'no',            label: 'No' },
+            { id: 'part_time',     label: 'Part time' },
+            { id: 'self_employed', label: 'Self-employed' },
+          ],
+          multi: false,
+          reflection: '&nbsp;',
+        }));
+        // Inject state reflection when ready
+        if (pendingReflection) {
+          pendingReflection.then(injectReflection);
+          pendingReflection = null;
+        }
+        const val = await awaitTile({ multi: false });
+        if (val === null) { escaped = true; return; }
+        p.works = val;
+        // Skip profession step if not working
+        if (p.works === 'no') {
+          stepIdx = PARTNER_STEPS.indexOf('birthday');
+        } else {
+          stepIdx++;
+        }
+        runStep();
+
+      } else if (step === 'profession') {
+        await setContent(inputCard({
+          prompt: `What does ${pronoun(p, 'subjective')} do?`,
+          placeholder: 'Profession or role',
+          inputId: 'team-input',
+          prevalue: p.profession || '',
+        }));
+        const val = await awaitInput('team-input');
+        if (val === null) { escaped = true; return; }
+        p.profession = val;
+        // Fire profession reflection — inject into birthday screen
+        pendingReflection = api.getTeamReflection({
+          type: 'profession',
+          partnerName: p.name,
+          partnerPronoun: p.pronoun || 'they',
+          profession: p.profession,
+          state: p.state,
+        }).catch(() => null);
+        stepIdx++;
+        runStep();
+
+      } else if (step === 'birthday') {
+        await setContent(inputCard({
+          prompt: `${p.name}'s birthday?`,
+          placeholder: 'e.g. March 14',
+          inputId: 'team-input',
+          reflection: pendingReflection ? '&nbsp;' : null,
+          prevalue: p.birthday || '',
+        }));
+        if (pendingReflection) {
+          pendingReflection.then(injectReflection);
+          pendingReflection = null;
+        }
+        const val = await awaitInput('team-input');
+        if (val === null) { escaped = true; return; }
+        p.birthday = val;
+        // Fire birthday reflection — inject into love language screen
+        pendingReflection = api.getTeamReflection({
+          type: 'birthday',
+          partnerName: p.name,
+          partnerPronoun: p.pronoun || 'they',
+          birthday: p.birthday,
+        }).catch(() => null);
+        stepIdx++;
+        runStep();
+
+      } else if (step === 'love_language') {
+        await setContent(tileCard({
+          prompt: `How does ${p.name} most feel taken care of?`,
+          tiles: [
+            { id: 'time',   label: 'Quality time' },
+            { id: 'words',  label: 'Words' },
+            { id: 'acts',   label: 'Acts of service' },
+            { id: 'touch',  label: 'Affection' },
+            { id: 'gifts',  label: 'Gifts' },
+            { id: 'unsure', label: 'Not sure yet' },
+          ],
+          multi: false,
+          reflection: '&nbsp;',
+        }));
+        if (pendingReflection) {
+          pendingReflection.then(injectReflection);
+          pendingReflection = null;
+        }
+        const val = await awaitTile({ multi: false });
+        if (val === null) { escaped = true; return; }
+        p.love_language = val;
+        // Fire final reflection
+        pendingReflection = api.getTeamReflection({
+          type: 'partner_complete',
+          partnerName: p.name,
+          partnerPronoun: p.pronoun || 'they',
+          state: p.state,
+          love_language: p.love_language,
+          profession: p.profession || null,
+        }).catch(() => null);
+        stepIdx++;
+        runStep();
+
+      } else if (step === 'closing') {
+        await setContent(statementCard({
+          text: '···',
+          ctaLabel: 'continue',
+          escapeLabel: 'that\'s enough for now',
+        }));
+        if (pendingReflection) {
+          pendingReflection.then(text => {
+            if (!text) return;
+            const textEl = el.querySelector('#team-inner [style*="font-serif"]');
+            if (textEl) textEl.textContent = text;
+          });
+          pendingReflection = null;
+        }
+        const next = await awaitCta();
+        done = true;
+        if (next === 'escape') escaped = true;
+      }
+    }
+
+    await runStep();
+
+    // Clean up back handler when cascade exits
+    subStepBack = null;
+    updateBackButton();
   }
 
   // ---------------------------------------------------------------------------
@@ -444,99 +509,196 @@ export function createTeam(world) {
 
   async function runChildrenCascade() {
     const situation = store.get('onboarding')?.answers?.situation;
-    const hasPartner = situation && ['partner', 'partner_kids'].includes(situation);
 
-    // First — do they have kids?
-    await setContent(tileCard({
-      prompt: 'Any children?',
-      tiles: [
-        { id: 'yes', label: 'Yes' },
-        { id: 'no',  label: 'No' },
-      ],
-      multi: false,
-    }));
+    // Steps per child: name → pronoun → birthday → age (conditional) → confirm
+    // Plus the opening 'has_kids' gate step.
+    // State machine tracks: which gate step, which child index, which child sub-step.
 
-    const hasKids = await awaitTile({ multi: false });
-    if (hasKids === null || hasKids === 'no') return;
+    // Gate step
+    const GATE  = 'has_kids';
+    // Per-child steps (in order)
+    const CHILD_STEPS = ['name', 'pronoun', 'birthday', 'age', 'confirm'];
 
-    // Collect children — up to 6, escape exits loop cleanly
-    let addingChildren = true;
-    let childIndex = 0;
+    let gate        = null;   // 'yes' | 'no' | null
+    let childIdx    = 0;      // which child we're currently on
+    let subIdx      = 0;      // which CHILD_STEPS index within current child
+    let inGate      = true;   // true until gate is answered yes
 
-    while (addingChildren && childIndex < 6) {
-      const ordinal = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth'][childIndex] || `Child ${childIndex + 1}`;
+    // In-progress data for the child currently being entered
+    // Committed to teamData.children when 'confirm' is reached
+    let draft = { name: '', pronoun: null, birthday: null, age: null };
 
-      // First child prompt — include one-at-a-time signalling
-      const firstPrompt = hasPartner
-        ? 'What\'s your child\'s name? We\'ll add them one at a time.'
-        : 'What\'s your child\'s name? We\'ll add them one at a time.';
+    const ORDINALS = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth'];
 
-      await setContent(inputCard({
-        prompt: childIndex === 0
-          ? firstPrompt
-          : `${ordinal} child?`,
-        placeholder: 'Name',
-        inputId: 'team-input',
-      }));
+    // Register back handler
+    subStepBack = () => {
+      if (inGate) return; // at gate — nowhere to go back within children
+      if (subIdx > 0) {
+        subIdx--;
+      } else if (childIdx > 0) {
+        // Back across child boundary — remove last committed child, go to its confirm
+        teamData.children.pop();
+        childIdx--;
+        subIdx = CHILD_STEPS.indexOf('confirm');
+        // Restore draft from the child we're going back to
+        const prev = teamData.children[childIdx];
+        if (prev) {
+          draft = { name: prev.name, pronoun: prev.pronoun, birthday: prev.birthday, age: prev.age };
+          // Remove it from teamData — it'll be re-committed when confirm is passed again
+          teamData.children.pop();
+        }
+      }
+      updateBackButton();
+      runChildStep();
+    };
 
-      const name = await awaitInput('team-input');
-      if (name === null) return; // escaped
+    function updateChildBack() {
+      const canBack = !inGate && (subIdx > 0 || childIdx > 0);
+      subStepBack = canBack ? () => {
+        if (subIdx > 0) {
+          subIdx--;
+        } else if (childIdx > 0) {
+          teamData.children.pop();
+          childIdx--;
+          subIdx = CHILD_STEPS.indexOf('confirm');
+          const prev = teamData.children[childIdx];
+          if (prev) {
+            draft = { name: prev.name, pronoun: prev.pronoun, birthday: prev.birthday, age: prev.age };
+            teamData.children.pop();
+          }
+        }
+        updateBackButton();
+        runChildStep();
+      } : null;
+      updateBackButton();
+    }
 
-      // --- PRONOUN (skippable — skip tile stores null) ---
+    async function runGate() {
+      inGate = true;
+      updateChildBack();
       await setContent(tileCard({
-        prompt: `How do you refer to ${name}?`,
+        prompt: 'Any children?',
         tiles: [
-          { id: 'she',  label: 'She / her' },
-          { id: 'he',   label: 'He / him' },
-          { id: 'they', label: 'They / them' },
-          { id: 'skip', label: 'Skip' },
+          { id: 'yes', label: 'Yes' },
+          { id: 'no',  label: 'No' },
         ],
         multi: false,
       }));
+      const val = await awaitTile({ multi: false });
+      if (val === null || val === 'no') {
+        subStepBack = null; updateBackButton(); return;
+      }
+      gate = 'yes';
+      inGate = false;
+      draft = { name: '', pronoun: null, birthday: null, age: null };
+      updateChildBack();
+      runChildStep();
+    }
 
-      const childPronounRaw = await awaitTile({ multi: false });
-      if (childPronounRaw === null) return; // escaped entirely
-      const childPronoun = childPronounRaw === 'skip' ? null : childPronounRaw;
-
-      await setContent(inputCard({
-        prompt: `When is ${name}'s birthday?`,
-        placeholder: 'e.g. March 14 or March 14 2019',
-        inputId: 'team-input',
-      }));
-
-      const birthday = await awaitInput('team-input'); // null if skipped
-
-      // Only ask age if birthday doesn't include a year — or was skipped
-      const birthdayHasYear = birthday && /\b(19|20)\d{2}\b/.test(birthday);
-      let age = null;
-
-      if (!birthdayHasYear) {
-        await setContent(inputCard({
-          prompt: birthdayHasYear === false && birthday
-            ? `What year was ${name} born, or roughly how old are they?`
-            : `How old is ${name}?`,
-          placeholder: 'e.g. 7',
-          inputId: 'team-input',
-        }));
-        age = await awaitInput('team-input'); // null if skipped — fine
+    async function runChildStep() {
+      updateChildBack();
+      // Skip age step if birthday has a year
+      const birthdayHasYear = draft.birthday && /\b(19|20)\d{2}\b/.test(draft.birthday);
+      if (CHILD_STEPS[subIdx] === 'age' && birthdayHasYear) {
+        subIdx++; // skip age — birthday carries the year
       }
 
-      teamData.children.push({ name, pronoun: childPronoun, birthday: birthday || null, age: age || null });
-      childIndex++;
+      const step    = CHILD_STEPS[subIdx];
+      const ordinal = ORDINALS[childIdx] || `Child ${childIdx + 1}`;
 
-      // After each child — offer to add another or continue
-      await setContent(tileCard({
-        prompt: `Got it — ${name} is in the picture.`,
-        tiles: [
-          { id: 'another', label: 'Add another child' },
-          { id: 'done',    label: 'That\'s everyone' },
-        ],
-        multi: false,
-      }));
+      if (step === 'name') {
+        await setContent(inputCard({
+          prompt: childIdx === 0
+            ? 'What\'s your child\'s name? We\'ll add them one at a time.'
+            : `${ordinal} child?`,
+          placeholder: 'Name',
+          inputId: 'team-input',
+          prevalue: draft.name || '',
+        }));
+        const val = await awaitInput('team-input');
+        if (val === null) { subStepBack = null; updateBackButton(); return; }
+        draft.name = val;
+        subIdx++;
+        runChildStep();
 
-      const next = await awaitTile({ multi: false });
-      if (next === null || next === 'done') addingChildren = false;
+      } else if (step === 'pronoun') {
+        await setContent(tileCard({
+          prompt: `How do you refer to ${draft.name}?`,
+          tiles: [
+            { id: 'she',  label: 'She / her' },
+            { id: 'he',   label: 'He / him' },
+            { id: 'they', label: 'They / them' },
+            { id: 'skip', label: 'Skip' },
+          ],
+          multi: false,
+        }));
+        const val = await awaitTile({ multi: false });
+        if (val === null) { subStepBack = null; updateBackButton(); return; }
+        draft.pronoun = val === 'skip' ? null : val;
+        subIdx++;
+        runChildStep();
+
+      } else if (step === 'birthday') {
+        await setContent(inputCard({
+          prompt: `When is ${draft.name}'s birthday?`,
+          placeholder: 'e.g. March 14 or March 14 2019',
+          inputId: 'team-input',
+          prevalue: draft.birthday || '',
+        }));
+        const val = await awaitInput('team-input');
+        // birthday is skippable — null is fine
+        draft.birthday = val || null;
+        subIdx++;
+        runChildStep();
+
+      } else if (step === 'age') {
+        const hasPartialBirthday = draft.birthday && !/\b(19|20)\d{2}\b/.test(draft.birthday);
+        await setContent(inputCard({
+          prompt: hasPartialBirthday
+            ? `What year was ${draft.name} born, or roughly how old are they?`
+            : `How old is ${draft.name}?`,
+          placeholder: 'e.g. 7',
+          inputId: 'team-input',
+          prevalue: draft.age ? String(draft.age) : '',
+        }));
+        const val = await awaitInput('team-input');
+        draft.age = val || null;
+        subIdx++;
+        runChildStep();
+
+      } else if (step === 'confirm') {
+        // Commit this child to teamData
+        const committed = { name: draft.name, pronoun: draft.pronoun, birthday: draft.birthday, age: draft.age };
+        // Replace if re-confirming after back
+        if (teamData.children[childIdx]) {
+          teamData.children[childIdx] = committed;
+        } else {
+          teamData.children.push(committed);
+        }
+
+        await setContent(tileCard({
+          prompt: `Got it — ${draft.name} is in the picture.`,
+          tiles: [
+            { id: 'another', label: 'Add another child' },
+            { id: 'done',    label: 'That\'s everyone' },
+          ],
+          multi: false,
+        }));
+        const val = await awaitTile({ multi: false });
+        if (val === null || val === 'done') {
+          subStepBack = null; updateBackButton(); return;
+        }
+        // Another child
+        childIdx++;
+        subIdx = 0;
+        draft = { name: '', pronoun: null, birthday: null, age: null };
+        runChildStep();
+      }
     }
+
+    await runGate();
+    subStepBack = null;
+    updateBackButton();
   }
 
   // ---------------------------------------------------------------------------
@@ -897,12 +1059,15 @@ export function createTeam(world) {
   };
 
   function advance() {
+    stepHistory.push(currentStep);
     currentStep = Math.min(currentStep + 1, STEPS.length - 1);
+    subStepBack = null; // clear any sub-cascade back handler on step change
     renderStep();
   }
 
   function renderStep() {
     updateProgressDots();
+    updateBackButton();
     const renderer = stepRenderers[STEPS[currentStep]];
     if (renderer) renderer();
   }
@@ -940,6 +1105,18 @@ export function createTeam(world) {
             font-size:10px;letter-spacing:0.3em;text-transform:uppercase;
             color:var(--color-cream-25);
           ">${world.name.toLowerCase()} · your team</div>
+
+          <!-- Back button — shown when there is somewhere to go back to -->
+          <button id="team-back" style="
+            font-family:var(--font-sans);font-weight:200;
+            font-size:10px;letter-spacing:0.25em;text-transform:uppercase;
+            color:rgba(240,235,218,0.2);
+            display:none;
+            transition:color 0.2s ease;
+          "
+          onmouseenter="this.style.color='rgba(240,235,218,0.55)'"
+          onmouseleave="this.style.color='rgba(240,235,218,0.2)'"
+          >← back</button>
         </div>
 
         <div id="team-dots" style="
@@ -955,6 +1132,31 @@ export function createTeam(world) {
         "></div>
       </div>
     `;
+
+    // Wire back button after scaffold is in DOM
+    const backBtn = el.querySelector('#team-back');
+    if (backBtn) {
+      backBtn.addEventListener('click', () => {
+        // If a sub-cascade has registered a back handler, use it
+        if (typeof subStepBack === 'function') {
+          subStepBack();
+          return;
+        }
+        // Otherwise step back through top-level steps
+        if (stepHistory.length > 0) {
+          currentStep = stepHistory.pop();
+          updateBackButton();
+          renderStep();
+        }
+      });
+    }
+  }
+
+  function updateBackButton() {
+    const backBtn = el.querySelector('#team-back');
+    if (!backBtn) return;
+    const canGoBack = stepHistory.length > 0 || typeof subStepBack === 'function';
+    backBtn.style.display = canGoBack ? '' : 'none';
   }
 
   // ---------------------------------------------------------------------------
@@ -967,6 +1169,7 @@ export function createTeam(world) {
       buildScaffold();
       container.appendChild(el);
       updateProgressDots();
+      updateBackButton();
       renderStep();
 
       return new Promise(resolve => {
