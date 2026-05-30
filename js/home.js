@@ -1,6 +1,21 @@
 import { store } from './store.js';
 import { transitions } from './transitions.js';
 import { createCascade } from './cascade.js';
+import {
+  computeAge,
+  resolveAge,
+  formatDate,
+  formatBriefDate,
+  loveLangLabel,
+  missionLabel,
+  daysUntilDate,
+  getUrgentItems,
+  buildUrgentByObject,
+  buildPrimaryBrief,
+  snoozeItem,
+  dismissItem,
+  isVehicleUrgent,
+} from './atak.js';
 
 // ---------------------------------------------------------------------------
 // DEV MODE — Hotspot visualiser
@@ -33,70 +48,7 @@ const DEV_HOTSPOTS = new URLSearchParams(window.location.search).get('dev') === 
 // UTILITIES
 // ---------------------------------------------------------------------------
 
-// Derives age in years from a birthday string (e.g. "March 14 2019", "March 14").
-// Returns null if the birthday string doesn't contain a year.
-// Accounts for whether the birthday has passed yet this year.
-function computeAge(birthday) {
-  if (!birthday) return null;
-  const match = birthday.match(/\b(19|20)\d{2}\b/);
-  if (!match) return null;
-  const birthYear = parseInt(match[0], 10);
-  const now = new Date();
-  let age = now.getFullYear() - birthYear;
-
-  // If we have month/day info, check whether the birthday has passed this year
-  // Try parsing the full string as a date — works for "March 14 2009", "2009-12-14" etc.
-  const parsed = new Date(birthday);
-  if (!isNaN(parsed)) {
-    const hadBirthdayThisYear = (
-      now.getMonth() > parsed.getMonth() ||
-      (now.getMonth() === parsed.getMonth() && now.getDate() >= parsed.getDate())
-    );
-    if (!hadBirthdayThisYear) age--;
-  }
-
-  return age > 0 && age < 120 ? age : null;
-}
-
-// Resolves a display age from birthday string and/or raw age field.
-// Handles cases where child.age was stored as a birth year (e.g. "2009")
-// rather than an age (e.g. "7"), and where birthday has month/day but no year.
-function resolveAge(birthday, rawAge) {
-  // If birthday has a year already, computeAge handles it fully
-  const fromBirthday = computeAge(birthday);
-  if (fromBirthday !== null) return fromBirthday;
-
-  // rawAge is a 4-digit birth year — try to combine with birthday month/day
-  if (rawAge) {
-    const str = String(rawAge).trim();
-    if (/^(19|20)\d{2}$/.test(str)) {
-      const year = parseInt(str, 10);
-
-      // If birthday has month/day info, combine them for an accurate age
-      if (birthday) {
-        const combined = new Date(`${birthday} ${year}`);
-        if (!isNaN(combined)) {
-          const now = new Date();
-          let age = now.getFullYear() - year;
-          const hadBirthday = (
-            now.getMonth() > combined.getMonth() ||
-            (now.getMonth() === combined.getMonth() && now.getDate() >= combined.getDate())
-          );
-          if (!hadBirthday) age--;
-          return age >= 0 && age < 120 ? age : null;
-        }
-      }
-
-      // Year only — no month/day, use conservative estimate
-      const age = new Date().getFullYear() - year - 1;
-      return age >= 0 && age < 120 ? age : null;
-    }
-    // Literal age number
-    const n = parseInt(str, 10);
-    return (!isNaN(n) && n > 0 && n < 120) ? n : null;
-  }
-  return null;
-}
+// computeAge and resolveAge live in atak.js — imported above.
 
 // ---------------------------------------------------------------------------
 // HOTSPOT MAPS
@@ -228,124 +180,7 @@ const HOTSPOT_MAPS = {
 // snoozed_until: null or ISO date string
 // ---------------------------------------------------------------------------
 
-function getUrgentItems() {
-  const team   = store.get('team') || {};
-  const stored = store.get('urgent_items') || [];
-  const active = stored.filter(i => !isSnoozed(i));
 
-  // Index stored ids so derived items don't duplicate what's already there
-  const storedIds = new Set(active.map(i => i.id));
-  const derived   = [];
-
-  // Partner birthday — derived from team data, skip if already in store
-  if (team?.partner?.birthday) {
-    const id = 'partner_birthday';
-    if (!storedIds.has(id)) {
-      const daysUntil = daysUntilDate(team.partner.birthday);
-      if (daysUntil !== null && daysUntil <= 14 && daysUntil >= 0) {
-        derived.push({
-          id,
-          object: 'calendar',
-          domain: 'calendar',
-          title: `${team.partner.name || 'Partner'}'s birthday`,
-          body: daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil} days`,
-          snoozable: true,
-          snoozed_until: null,
-        });
-      }
-    }
-  }
-
-  // Children birthdays — derived, skip any already in store
-  if (Array.isArray(team?.children)) {
-    team.children.forEach(child => {
-      if (!child.birthday) return;
-      const id = `child_birthday_${child.name}`;
-      if (storedIds.has(id)) return;
-      const daysUntil = daysUntilDate(child.birthday);
-      if (daysUntil !== null && daysUntil <= 14 && daysUntil >= 0) {
-        derived.push({
-          id,
-          object: 'calendar',
-          domain: 'calendar',
-          title: `${child.name}'s birthday`,
-          body: daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `${daysUntil} days`,
-          snoozable: true,
-          snoozed_until: null,
-        });
-      }
-    });
-  }
-
-  // Maintenance tasks — derived from maintenance_tasks store
-  // Overdue or due within 14 days surface as urgent items
-  const tasks = store.get('maintenance_tasks') || [];
-  const today = new Date();
-  tasks.forEach(t => {
-    const id = `maintenance_task_${t.id}`;
-    if (storedIds.has(id)) return;
-    if (!t.next_due) return;
-    const due  = new Date(t.next_due);
-    const days = Math.ceil((due - today) / (1000 * 60 * 60 * 24));
-    if (days > 14) return; // not urgent yet
-    const overdue = days < 0;
-    derived.push({
-      id,
-      object: 'maintenance',
-      domain: 'maintenance',
-      title: t.label,
-      body: overdue
-        ? `Overdue by ${Math.abs(days)} days`
-        : days === 0 ? 'Due today' : `Due in ${days} days`,
-      snoozable: !overdue,
-      snoozed_until: null,
-      tier: overdue ? 'warning' : 'caution',
-      cascade: {
-        type: 'maintenance_task',
-        context: { task_id: t.id },
-      },
-    });
-  });
-
-  // Stored items first (user-facing priority), then derived
-  return [...active, ...derived];
-}
-
-function daysUntilDate(dateStr) {
-  if (!dateStr) return null;
-  try {
-    const now = new Date();
-    const target = new Date(dateStr);
-    // Use this year's occurrence
-    target.setFullYear(now.getFullYear());
-    if (target < now) target.setFullYear(now.getFullYear() + 1);
-    const diff = Math.ceil((target - now) / (1000 * 60 * 60 * 24));
-    return diff;
-  } catch {
-    return null;
-  }
-}
-
-function isSnoozed(item) {
-  if (!item.snoozed_until) return false;
-  return new Date(item.snoozed_until) > new Date();
-}
-
-function snoozeItem(itemId, hours = 24) {
-  const stored = store.get('urgent_items') || [];
-  const updated = stored.map(i => {
-    if (i.id !== itemId) return i;
-    const until = new Date();
-    until.setHours(until.getHours() + hours);
-    return { ...i, snoozed_until: until.toISOString() };
-  });
-  store.set('urgent_items', updated);
-}
-
-function dismissItem(itemId) {
-  const stored = store.get('urgent_items') || [];
-  store.set('urgent_items', stored.filter(i => i.id !== itemId));
-}
 
 // ---------------------------------------------------------------------------
 // DOMAIN BRIEF CONTENT
@@ -360,7 +195,7 @@ function getDomainBrief(domain, world) {
   switch (domain) {
 
     case 'brief':
-      return buildPrimaryBrief(team, onboard, world);
+      return buildPrimaryBrief();
 
     case 'calendar': {
       const items = getUrgentItems().filter(i => i.domain === 'calendar');
@@ -489,205 +324,7 @@ function getDomainBrief(domain, world) {
   }
 }
 
-function buildPrimaryBrief(team, onboard, world) {
-  const sections = [];
-  const urgent   = getUrgentItems();
 
-  // ── Needs attention — urgent items only, no duplication ───────────────────
-  if (urgent.length) {
-    sections.push({
-      heading: 'Needs attention',
-      items: urgent.map(i => ({
-        label:        i.title,
-        value:        i.body,
-        urgent:       true,
-        item_id:      i.id,
-        snoozable:    i.snoozable,
-        cascade_type: i.cascade?.type || null,
-      })),
-    });
-  }
-
-  // ── Your team — names + what's relevant about each person right now ───────
-  const teamItems = [];
-
-  if (team?.partner?.name) {
-    const partnerBday = urgent.find(i => i.id === 'partner_birthday');
-    teamItems.push({
-      label: team.partner.name,
-      value: partnerBday
-        ? `Birthday ${partnerBday.body.toLowerCase()}`
-        : team.partner.love_language
-          ? `Love language: ${loveLangLabel(team.partner.love_language)}`
-          : team.partner.profession || '',
-      urgent: !!partnerBday,
-      person_id: 'partner',
-    });
-  }
-
-  if (Array.isArray(team?.children) && team.children.length) {
-    team.children.forEach((child, idx) => {
-      const childBday = urgent.find(i => i.id === `child_birthday_${child.name}`);
-      teamItems.push({
-        label: child.name,
-        value: childBday
-          ? `Birthday ${childBday.body.toLowerCase()}`
-          : resolveAge(child.birthday, child.age) !== null ? `${resolveAge(child.birthday, child.age)} years old` : '',
-        urgent: !!childBday,
-        person_id: `child_${idx}`,
-      });
-    });
-  }
-
-  if (teamItems.length) {
-    sections.push({
-      heading: 'Your team',
-      items: teamItems,
-    });
-  } else {
-    sections.push({
-      heading: 'Your team',
-      items: [{ label: 'Just you for now', value: '', urgent: false }],
-    });
-  }
-
-  // ── On the horizon — temporal clustering across all domains ───────────────
-  // Surface upcoming items that aren't yet urgent but are worth knowing.
-  // This is where the ATAK shows synthesis: things no single grab-and-go sees.
-  const horizonItems = [];
-
-  // Vehicles coming due in the next 30 days (but not already urgent / <14 days)
-  const vehicles = store.get('vehicles') || [];
-  vehicles.forEach(v => {
-    const checks = [
-      { field: v.registration_expiry, label: `${v.name || 'Vehicle'} — Reg` },
-      { field: v.insurance_expiry,    label: `${v.name || 'Vehicle'} — Insurance` },
-      { field: v.service_due,         label: `${v.name || 'Vehicle'} — Service` },
-    ];
-    checks.forEach(({ field, label }) => {
-      if (!field) return;
-      const days = Math.ceil((new Date(field) - new Date()) / (1000 * 60 * 60 * 24));
-      if (days > 14 && days <= 30) {
-        horizonItems.push({
-          label,
-          value: `${days} days`,
-          urgent: false,
-        });
-      }
-    });
-  });
-
-  // Maintenance tasks 15–30 days out
-  const mainTasks = store.get('maintenance_tasks') || [];
-  mainTasks.forEach(t => {
-    if (!t.next_due) return;
-    const days = Math.ceil((new Date(t.next_due) - new Date()) / (1000 * 60 * 60 * 24));
-    if (days > 14 && days <= 30) {
-      horizonItems.push({ label: t.label, value: `${days} days`, urgent: false });
-    }
-  });
-
-  // Children birthdays 15–30 days out
-  if (Array.isArray(team?.children)) {
-    team.children.forEach(child => {
-      if (!child.birthday) return;
-      const days = daysUntilDate(child.birthday);
-      if (days !== null && days > 14 && days <= 30) {
-        horizonItems.push({
-          label: `${child.name}'s birthday`,
-          value: `${days} days`,
-          urgent: false,
-        });
-      }
-    });
-  }
-
-  // Partner birthday 15–30 days out
-  if (team?.partner?.birthday) {
-    const days = daysUntilDate(team.partner.birthday);
-    if (days !== null && days > 14 && days <= 30) {
-      horizonItems.push({
-        label: `${team.partner.name || 'Partner'}'s birthday`,
-        value: `${days} days`,
-        urgent: false,
-      });
-    }
-  }
-
-  sections.push({
-    heading: 'On the horizon',
-    items: horizonItems.length ? horizonItems : [{
-      label: 'Nothing in the next 30 days',
-      value: 'Add dates and I\'ll keep watch',
-      urgent: false,
-    }],
-  });
-
-  // ── In focus — mission items from onboarding ───────────────────────────────
-  const mission = onboard?.answers?.mission || onboard?.mission || [];
-  if (mission.length) {
-    sections.push({
-      heading: 'In focus',
-      items: mission.map(m => ({
-        label: missionLabel(m),
-        value: '',
-        urgent: false,
-      })),
-    });
-  }
-
-  return {
-    title: 'Brief',
-    sections,
-    is_primary: true,
-  };
-}
-
-function loveLangLabel(id) {
-  const map = {
-    words_of_affirmation: 'Words of affirmation',
-    acts_of_service:      'Acts of service',
-    receiving_gifts:      'Receiving gifts',
-    quality_time:         'Quality time',
-    physical_touch:       'Physical touch',
-  };
-  return map[id] || id;
-}
-
-function missionLabel(id) {
-  const map = {
-    getting_organized:  'Getting organized',
-    time:               'How I spend my time',
-    working_toward:     'Something I\'m working toward',
-    daily_routine:      'My daily routine',
-    relationships:      'My relationships',
-    professional_life:  'My professional life',
-    money:              'Money',
-    physical_health:    'My physical health',
-    emotional_wellbeing:'My emotional well-being',
-    personal_life:      'My personal life',
-    undealt:            'Something I haven\'t dealt with yet',
-  };
-  return map[id] || id;
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  try {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch { return dateStr; }
-}
-
-function isVehicleUrgent(v) {
-  const threshold = 30; // days
-  const fields = [v.registration_expiry, v.insurance_expiry, v.service_due];
-  return fields.some(f => {
-    if (!f) return false;
-    const days = Math.ceil((new Date(f) - new Date()) / (1000 * 60 * 60 * 24));
-    return days <= threshold;
-  });
-}
 
 // ---------------------------------------------------------------------------
 // MAIN MODULE
@@ -759,21 +396,7 @@ export function createHome(world) {
 
   // ── Hotspots ──────────────────────────────────────────────────────────────
 
-  function buildUrgentByObject(items, spots) {
-    const map = {};
-    spots.forEach(s => { map[s.id] = { items: [], tier: null }; });
-    items.forEach(item => {
-      const spot = spots.find(s => s.domain === item.domain || s.id === item.object);
-      if (!spot) return;
-      map[spot.id].items.push(item);
-      // Escalate tier — warning beats caution
-      const itemTier = item.tier || 'caution';
-      if (map[spot.id].tier === null || itemTier === 'warning') {
-        map[spot.id].tier = itemTier;
-      }
-    });
-    return map;
-  }
+  // buildUrgentByObject imported from atak.js
 
   function renderHotspots() {
     const layer = el.querySelector('#home-hotspots');
@@ -1228,11 +851,7 @@ export function createHome(world) {
     `;
   }
 
-  function formatBriefDate() {
-    return new Date().toLocaleDateString('en-CA', {
-      weekday: 'long', month: 'long', day: 'numeric',
-    });
-  }
+
 
   // ── Brief listeners ───────────────────────────────────────────────────────
 
