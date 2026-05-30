@@ -1,4 +1,5 @@
 import { store } from './store.js';
+import { isVehicleUrgent } from './vehicles.js';
 
 // ---------------------------------------------------------------------------
 // ATAK — Fused Intelligence Module
@@ -7,7 +8,7 @@ import { store } from './store.js';
 // domains write to — applies its own synthesis, and produces the brief.
 //
 // Architecture:
-//   domains (vehicles, team, health, …) ──write──▶ store
+//   domains (vehicles, maintenance, team, health, …) ──write──▶ store
 //   atak.js ──reads──▶ store (all of it)
 //           ──applies──▶ intelligence layer (this file)
 //           ──produces──▶ fused brief for the user
@@ -15,6 +16,8 @@ import { store } from './store.js';
 // The ATAK does not call into domain files. Domains do not know the ATAK
 // exists. The store is the shared memory. This file is the only place
 // cross-domain synthesis happens.
+//
+// isVehicleUrgent lives in vehicles.js — imported above.
 // ---------------------------------------------------------------------------
 
 
@@ -23,9 +26,6 @@ import { store } from './store.js';
 // Date math and age resolution used throughout the intelligence layer.
 // ---------------------------------------------------------------------------
 
-// Derives age in years from a birthday string ("March 14 2019", "March 14").
-// Returns null if the string contains no year.
-// Accounts for whether the birthday has passed yet this year.
 export function computeAge(birthday) {
   if (!birthday) return null;
   const match = birthday.match(/\b(19|20)\d{2}\b/);
@@ -46,9 +46,6 @@ export function computeAge(birthday) {
   return age > 0 && age < 120 ? age : null;
 }
 
-// Resolves a display age from birthday string and/or raw age field.
-// Handles cases where child.age was stored as a birth year ("2009")
-// rather than a computed age ("7"), and where birthday has month/day but no year.
 export function resolveAge(birthday, rawAge) {
   const fromBirthday = computeAge(birthday);
   if (fromBirthday !== null) return fromBirthday;
@@ -81,8 +78,6 @@ export function resolveAge(birthday, rawAge) {
   return null;
 }
 
-// Returns days until a recurring annual date (birthday, anniversary).
-// Always resolves to the next upcoming occurrence.
 export function daysUntilDate(dateStr) {
   if (!dateStr) return null;
   try {
@@ -174,14 +169,6 @@ export function dismissItem(itemId) {
   store.set('urgent_items', stored.filter(i => i.id !== itemId));
 }
 
-export function isVehicleUrgent(v) {
-  const threshold = 30;
-  return [v.registration_expiry, v.insurance_expiry, v.service_due].some(f => {
-    if (!f) return false;
-    return Math.ceil((new Date(f) - new Date()) / (1000 * 60 * 60 * 24)) <= threshold;
-  });
-}
-
 // Primary urgency scan — called by both the brief and the hotspot renderer.
 // Returns a flat array of urgent items ordered by priority.
 export function getUrgentItems() {
@@ -263,7 +250,6 @@ export function getUrgentItems() {
 }
 
 // Maps urgent items onto hotspot objects for the room renderer.
-// home.js calls this — the room needs to know which objects are lit up.
 export function buildUrgentByObject(items, spots) {
   const map = {};
   spots.forEach(s => { map[s.id] = { items: [], tier: null }; });

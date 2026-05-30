@@ -1,6 +1,7 @@
 import { store } from './store.js';
 import { transitions } from './transitions.js';
 import { createCascade } from './cascade.js';
+import { createCalendar } from './calendar.js';
 import {
   computeAge,
   resolveAge,
@@ -14,8 +15,17 @@ import {
   buildPrimaryBrief,
   snoozeItem,
   dismissItem,
-  isVehicleUrgent,
 } from './atak.js';
+import {
+  getVehiclesBrief,
+  isVehicleUrgent,
+  syncVehicleSignals,
+  retireVehicleSignals,
+} from './vehicles.js';
+import {
+  getMaintenanceBrief,
+  syncMaintenanceSignals,
+} from './maintenance.js';
 
 // ---------------------------------------------------------------------------
 // DEV MODE — Hotspot visualiser
@@ -167,92 +177,65 @@ const HOTSPOT_MAPS = {
 };
 
 // ---------------------------------------------------------------------------
-// URGENT ITEMS
-// In production these come from the store / AI engine.
-// For now: a static set of day-one stubs so the urgent system
-// can be built and tested before real data exists.
-//
-// object: matches a hotspot id in HOTSPOT_MAPS
-// domain: the domain this item belongs to
-// title: plain, short — what it is
-// body: one line of relevant data
-// snoozable: whether the user can defer it
-// snoozed_until: null or ISO date string
-// ---------------------------------------------------------------------------
-
-
-
-// ---------------------------------------------------------------------------
 // DOMAIN BRIEF CONTENT
 // What each object opens when tapped. Plain, data-first, no performance.
-// In production: populated from store. Day-one: honest empty states.
+// Domain logic lives in domain files. home.js is the host — it routes only.
 // ---------------------------------------------------------------------------
 
 function getDomainBrief(domain, world) {
-  const team    = store.get('team')       || {};
-  const onboard = store.get('onboarding') || {};
-
   switch (domain) {
 
     case 'brief':
       return buildPrimaryBrief();
 
     case 'calendar': {
-      const items = getUrgentItems().filter(i => i.domain === 'calendar');
+      // Will be replaced by calendar.js brief when that domain is built.
+      // For now: surfaces calendar-domain urgent items (birthdays etc).
+      const calendarEntries = store.get('calendar') || [];
+      const today = new Date();
+      const upcoming = calendarEntries
+        .filter(e => {
+          if (!e.date) return false;
+          const days = Math.ceil((new Date(e.date) - today) / (1000 * 60 * 60 * 24));
+          return days >= 0 && days <= 30;
+        })
+        .sort((a, b) => new Date(a.date) - new Date(b.date))
+        .slice(0, 8);
+
       return {
         title: 'Coming up',
-        sections: items.length ? items.map(i => ({
-          label: i.title,
-          value: i.body,
-          urgent: true,
-          item_id: i.id,
-          snoozable: i.snoozable,
+        sections: upcoming.length ? upcoming.map(e => ({
+          label:   e.title,
+          value:   _daysLabel(e.date, today),
+          urgent:  e.pressure === 'warning',
+          item_id: e.id,
+          domain:  e.domain || null,
         })) : [{
-          label: 'Nothing on the horizon yet',
-          value: 'Add dates and I\'ll keep an eye on them',
+          label:  'Nothing on the horizon yet',
+          value:  'Add dates and I\'ll keep an eye on them',
           urgent: false,
         }],
-        cta: 'Add a date',
+        cta:        'Add a date',
         cta_action: 'add_date',
       };
     }
 
-    case 'vehicles': {
-      const vehicles = store.get('vehicles') || [];
-      return {
-        title: 'Vehicles',
-        sections: vehicles.length ? vehicles.map(v => ({
-          label: v.name || 'Vehicle',
-          value: [
-            v.registration_expiry ? `Reg: ${formatDate(v.registration_expiry)}` : null,
-            v.insurance_expiry    ? `Insurance: ${formatDate(v.insurance_expiry)}` : null,
-            v.service_due         ? `Service: ${formatDate(v.service_due)}` : null,
-          ].filter(Boolean).join(' · ') || 'No dates on file',
-          urgent: isVehicleUrgent(v),
-          vehicle_id: v.id,
-        })) : [{
-          label: 'No vehicles on file',
-          value: 'Add your vehicles and I\'ll track what needs attention',
-          urgent: false,
-        }],
-        cta: 'Add a vehicle',
-        cta_action: 'add_vehicle',
-      };
-    }
+    case 'vehicles':
+      return getVehiclesBrief();
 
     case 'alerts': {
       const alerts = getUrgentItems();
       return {
         title: 'Alerts',
         sections: alerts.length ? alerts.map(i => ({
-          label: i.title,
-          value: i.body,
-          urgent: true,
-          item_id: i.id,
+          label:     i.title,
+          value:     i.body,
+          urgent:    true,
+          item_id:   i.id,
           snoozable: i.snoozable,
         })) : [{
-          label: 'All clear',
-          value: 'Nothing needs your attention right now',
+          label:  'All clear',
+          value:  'Nothing needs your attention right now',
           urgent: false,
         }],
       };
@@ -262,51 +245,16 @@ function getDomainBrief(domain, world) {
       return {
         title: 'Health',
         sections: [{
-          label: 'Nothing tracked yet',
-          value: 'I\'ll keep an eye on what you share',
+          label:  'Nothing tracked yet',
+          value:  'I\'ll keep an eye on what you share',
           urgent: false,
         }],
-        cta: 'Add something',
+        cta:        'Add something',
         cta_action: 'add_health',
       };
 
-    case 'maintenance': {
-      const tasks = store.get('maintenance_tasks') || [];
-      const today = new Date();
-      const activeTasks = tasks
-        .map(t => {
-          const due = t.next_due ? new Date(t.next_due) : null;
-          const days = due ? Math.ceil((due - today) / (1000 * 60 * 60 * 24)) : null;
-          const overdue = days !== null && days < 0;
-          const urgent  = days !== null && days <= 14;
-          return { ...t, days, overdue, urgent };
-        })
-        .sort((a, b) => {
-          if (a.overdue && !b.overdue) return -1;
-          if (!a.overdue && b.overdue) return 1;
-          return (a.days ?? 999) - (b.days ?? 999);
-        });
-
-      return {
-        title: 'Maintenance',
-        sections: activeTasks.length ? activeTasks.map(t => ({
-          label: t.label,
-          value: t.overdue
-            ? `Overdue by ${Math.abs(t.days)} days`
-            : t.days !== null
-              ? t.days === 0 ? 'Due today' : `Due in ${t.days} days`
-              : t.interval_label || 'No due date set',
-          urgent: t.overdue || t.urgent,
-          task_id: t.id,
-        })) : [{
-          label: 'Nothing scheduled',
-          value: 'Add recurring tasks and I\'ll flag them before they matter',
-          urgent: false,
-        }],
-        cta: 'Add a task',
-        cta_action: 'add_maintenance',
-      };
-    }
+    case 'maintenance':
+      return getMaintenanceBrief();
 
     case 'capture':
       return {
@@ -324,6 +272,13 @@ function getDomainBrief(domain, world) {
   }
 }
 
+// Days label for calendar entries in the brief
+function _daysLabel(dateStr, today) {
+  const days = Math.ceil((new Date(dateStr) - today) / (1000 * 60 * 60 * 24));
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  return `${days} days`;
+}
 
 
 // ---------------------------------------------------------------------------
@@ -334,6 +289,10 @@ export function createHome(world) {
   const el = document.createElement('div');
   el.id    = 'screen-home';
   el.style.cssText = 'position:absolute;inset:0;overflow:hidden;background:#000;';
+
+  // Sync all domain signals to store.calendar on load
+  syncVehicleSignals();
+  syncMaintenanceSignals();
 
   const urgentItems  = getUrgentItems();
   const hotspots     = HOTSPOT_MAPS[world.id] || HOTSPOT_MAPS.operator;
@@ -484,11 +443,6 @@ export function createHome(world) {
     });
 
     // ── Coordinate inspector — DEV_HOTSPOTS only ────────────────────────────
-    // Tap anywhere on the hotspot layer to read the x,y percentage at that point.
-    // The hotspot layer covers the full room and receives all taps — the room
-    // background-image div sits beneath it and doesn't receive pointer events.
-    // Readout appears at the tap location, auto-dismisses after 3 seconds.
-    // Tapping a hotspot opens the brief AND shows coordinates — both fire.
     if (DEV_HOTSPOTS) {
       let inspectorEl = null;
       let dismissTimer = null;
@@ -498,11 +452,9 @@ export function createHome(world) {
         const xPct = Math.round(((e.clientX - rect.left) / rect.width)  * 100);
         const yPct = Math.round(((e.clientY - rect.top)  / rect.height) * 100);
 
-        // Clear any existing readout + timer
         if (dismissTimer) { clearTimeout(dismissTimer); dismissTimer = null; }
         if (inspectorEl)  { inspectorEl.remove(); inspectorEl = null; }
 
-        // Build readout — pinned to tap point
         const readout = document.createElement('div');
         readout.style.cssText = [
           'position:absolute;',
@@ -513,14 +465,13 @@ export function createHome(world) {
           'border:1px solid rgba(100,200,100,0.6);',
           'white-space:nowrap;z-index:999;',
           `left:${xPct}%;top:${yPct}%;`,
-          'transform:translate(10px,-50%);',   // offset right so finger doesn't cover it
+          'transform:translate(10px,-50%);',
         ].join('');
         readout.textContent = `x: ${xPct}, y: ${yPct}`;
 
         layer.appendChild(readout);
         inspectorEl = readout;
 
-        // Auto-dismiss after 3 s
         dismissTimer = setTimeout(() => {
           readout.remove();
           inspectorEl = null;
@@ -532,7 +483,18 @@ export function createHome(world) {
 
   // ── Brief panel ───────────────────────────────────────────────────────────
 
+  // Opens the calendar domain — full screen, mounts over #app
+  function openCalendar() {
+    const cal = createCalendar({
+      onClose: () => {
+        // Calendar closed — nothing to do, room is still underneath
+      },
+    });
+    cal.open(document.getElementById('app') || el);
+  }
+
   function openBrief(spot) {
+    if (spot.domain === 'calendar') { openCalendar(); return; }
     if (briefOpen) return;
     briefOpen = true;
 
@@ -554,17 +516,16 @@ export function createHome(world) {
       panel.style.transform = 'translateY(0)';
     });
 
-    // Re-render brief when store changes while open (e.g. after person detail save)
+    // Re-render brief when store changes while open
     const unsubscribe = store.subscribe((state, key) => {
       if (!briefOpen) { unsubscribe(); return; }
-      const watchKeys = ['team', 'vehicles', 'maintenance_tasks', 'urgent_items', 'onboarding'];
+      const watchKeys = ['team', 'vehicles', 'maintenance_tasks', 'urgent_items', 'onboarding', 'calendar'];
       const changed   = Array.isArray(key) ? key : [key];
       if (changed.some(k => watchKeys.includes(k))) {
         buildAndAttach();
       }
     });
 
-    // Store unsubscribe so closeBrief can clean it up
     panel._briefUnsub = unsubscribe;
   }
 
@@ -575,7 +536,6 @@ export function createHome(world) {
     const panel = el.querySelector('#home-brief');
     const room  = el.querySelector('#home-room');
 
-    // Unsubscribe store listener
     if (panel?._briefUnsub) { panel._briefUnsub(); panel._briefUnsub = null; }
 
     if (room) room.style.filter = '';
@@ -770,9 +730,9 @@ export function createHome(world) {
       : 'border-left:2px solid rgba(240,235,218,0.08);padding-left:12px;';
 
     const hasCascade = !!(item.cascade_type && item.item_id);
-    const hasVehicle = !!item.vehicle_id;  // tappable vehicle row → detail cascade
-    const hasPerson  = !!item.person_id;   // tappable person row → person detail cascade
-    const hasTask    = !!item.task_id && !hasCascade; // tappable maintenance task row → inline edit
+    const hasVehicle = !!item.vehicle_id;
+    const hasPerson  = !!item.person_id;
+    const hasTask    = !!item.task_id && !hasCascade;
 
     const snoozeBtn = (item.urgent && item.snoozable && item.item_id) ? `
       <button class="snooze-btn" data-id="${item.item_id}" style="
@@ -796,7 +756,6 @@ export function createHome(world) {
       ">done</button>
     ` : '';
 
-    // Cascade affordance — replaces dismiss, label becomes tappable
     const cascadeBtn = hasCascade ? `
       <button class="cascade-open-btn" data-id="${item.item_id}" style="
         font-family:var(--font-sans);font-weight:200;
@@ -898,11 +857,8 @@ export function createHome(world) {
 
       const cascadePanel = createCascade({
         item,
-        onBack: () => {
-          // Brief stays open — cascade slides away
-        },
+        onBack: () => {},
         onComplete: () => {
-          // Dismiss the item and refresh the brief
           dismissItem(itemId);
           closeBrief();
         },
@@ -979,7 +935,10 @@ export function createHome(world) {
       const cascadePanel = createCascade({
         item: detailItem,
         onBack: () => {},
-        onComplete: () => { closeBrief(); },
+        onComplete: () => {
+          syncVehicleSignals();
+          closeBrief();
+        },
       });
       if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
     };
@@ -1008,7 +967,10 @@ export function createHome(world) {
       const cascadePanel = createCascade({
         item: detailItem,
         onBack: () => {},
-        onComplete: () => { closeBrief(); },
+        onComplete: () => {
+          syncMaintenanceSignals();
+          closeBrief();
+        },
       });
       if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
     };
@@ -1033,7 +995,10 @@ export function createHome(world) {
       const cascadePanel = createCascade({
         item: intakeItem,
         onBack: () => {},
-        onComplete: () => { closeBrief(); },
+        onComplete: () => {
+          syncMaintenanceSignals();
+          closeBrief();
+        },
       });
       if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
     };
@@ -1053,6 +1018,7 @@ export function createHome(world) {
         item: intakeItem,
         onBack: () => {},
         onComplete: () => {
+          syncVehicleSignals();
           closeBrief();
           setTimeout(() => {
             const spot = HOTSPOT_MAPS[world?.id]?.find(h => h.domain === 'vehicles');
@@ -1133,6 +1099,17 @@ export function createHome(world) {
     document.head.appendChild(style);
   }
 
+  // ── Domain routing — handles ylu:open-domain events from calendar.js ──────
+  // When a signal is tapped in the calendar day view, it dispatches this event.
+  // We intercept it here and open the relevant domain brief.
+  function handleDomainRoute(e) {
+    const { domain } = e.detail || {};
+    if (!domain) return;
+    const spot = hotspots.find(h => h.domain === domain);
+    if (spot) openBrief(spot);
+  }
+  window.addEventListener('ylu:open-domain', handleDomainRoute);
+
   // ── Public API ────────────────────────────────────────────────────────────
 
   return {
@@ -1145,6 +1122,7 @@ export function createHome(world) {
       attachDevReset(el);
     },
     unmount() {
+      window.removeEventListener('ylu:open-domain', handleDomainRoute);
       return transitions.fadeOut(el, 600).then(() => el.remove());
     },
   };
