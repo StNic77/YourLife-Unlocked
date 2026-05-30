@@ -35,14 +35,67 @@ const DEV_HOTSPOTS = new URLSearchParams(window.location.search).get('dev') === 
 
 // Derives age in years from a birthday string (e.g. "March 14 2019", "March 14").
 // Returns null if the birthday string doesn't contain a year.
+// Accounts for whether the birthday has passed yet this year.
 function computeAge(birthday) {
   if (!birthday) return null;
   const match = birthday.match(/\b(19|20)\d{2}\b/);
   if (!match) return null;
   const birthYear = parseInt(match[0], 10);
   const now = new Date();
-  const age = now.getFullYear() - birthYear;
+  let age = now.getFullYear() - birthYear;
+
+  // If we have month/day info, check whether the birthday has passed this year
+  // Try parsing the full string as a date — works for "March 14 2009", "2009-12-14" etc.
+  const parsed = new Date(birthday);
+  if (!isNaN(parsed)) {
+    const hadBirthdayThisYear = (
+      now.getMonth() > parsed.getMonth() ||
+      (now.getMonth() === parsed.getMonth() && now.getDate() >= parsed.getDate())
+    );
+    if (!hadBirthdayThisYear) age--;
+  }
+
   return age > 0 && age < 120 ? age : null;
+}
+
+// Resolves a display age from birthday string and/or raw age field.
+// Handles cases where child.age was stored as a birth year (e.g. "2009")
+// rather than an age (e.g. "7"), and where birthday has month/day but no year.
+function resolveAge(birthday, rawAge) {
+  // If birthday has a year already, computeAge handles it fully
+  const fromBirthday = computeAge(birthday);
+  if (fromBirthday !== null) return fromBirthday;
+
+  // rawAge is a 4-digit birth year — try to combine with birthday month/day
+  if (rawAge) {
+    const str = String(rawAge).trim();
+    if (/^(19|20)\d{2}$/.test(str)) {
+      const year = parseInt(str, 10);
+
+      // If birthday has month/day info, combine them for an accurate age
+      if (birthday) {
+        const combined = new Date(`${birthday} ${year}`);
+        if (!isNaN(combined)) {
+          const now = new Date();
+          let age = now.getFullYear() - year;
+          const hadBirthday = (
+            now.getMonth() > combined.getMonth() ||
+            (now.getMonth() === combined.getMonth() && now.getDate() >= combined.getDate())
+          );
+          if (!hadBirthday) age--;
+          return age >= 0 && age < 120 ? age : null;
+        }
+      }
+
+      // Year only — no month/day, use conservative estimate
+      const age = new Date().getFullYear() - year - 1;
+      return age >= 0 && age < 120 ? age : null;
+    }
+    // Literal age number
+    const n = parseInt(str, 10);
+    return (!isNaN(n) && n > 0 && n < 120) ? n : null;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -479,7 +532,7 @@ function buildPrimaryBrief(team, onboard, world) {
         label: child.name,
         value: childBday
           ? `Birthday ${childBday.body.toLowerCase()}`
-          : (computeAge(child.birthday) || child.age) ? `${computeAge(child.birthday) || child.age} years old` : '',
+          : resolveAge(child.birthday, child.age) !== null ? `${resolveAge(child.birthday, child.age)} years old` : '',
         urgent: !!childBday,
         person_id: `child_${idx}`,
       });
@@ -571,10 +624,11 @@ function buildPrimaryBrief(team, onboard, world) {
   });
 
   // ── In focus — mission items from onboarding ───────────────────────────────
-  if (onboard?.mission?.length) {
+  const mission = onboard?.answers?.mission || onboard?.mission || [];
+  if (mission.length) {
     sections.push({
       heading: 'In focus',
-      items: onboard.mission.map(m => ({
+      items: mission.map(m => ({
         label: missionLabel(m),
         value: '',
         urgent: false,
@@ -859,22 +913,36 @@ export function createHome(world) {
     if (briefOpen) return;
     briefOpen = true;
 
-    const content = getDomainBrief(spot.domain, world);
-    const panel   = el.querySelector('#home-brief');
-    const room    = el.querySelector('#home-room');
-
-    // Dim the room
+    const panel = el.querySelector('#home-brief');
+    const room  = el.querySelector('#home-room');
     if (room) room.style.filter = 'brightness(0.35)';
 
-    panel.innerHTML = buildBriefHTML(content, spot);
-    panel.style.pointerEvents = 'all';
+    function buildAndAttach() {
+      const content = getDomainBrief(spot.domain, world);
+      panel.innerHTML = buildBriefHTML(content, spot);
+      panel.style.pointerEvents = 'all';
+      attachBriefListeners(panel, spot, content);
+    }
+
+    buildAndAttach();
 
     requestAnimationFrame(() => {
       panel.style.opacity   = '1';
       panel.style.transform = 'translateY(0)';
     });
 
-    attachBriefListeners(panel, spot, content);
+    // Re-render brief when store changes while open (e.g. after person detail save)
+    const unsubscribe = store.subscribe((state, key) => {
+      if (!briefOpen) { unsubscribe(); return; }
+      const watchKeys = ['team', 'vehicles', 'maintenance_tasks', 'urgent_items', 'onboarding'];
+      const changed   = Array.isArray(key) ? key : [key];
+      if (changed.some(k => watchKeys.includes(k))) {
+        buildAndAttach();
+      }
+    });
+
+    // Store unsubscribe so closeBrief can clean it up
+    panel._briefUnsub = unsubscribe;
   }
 
   function closeBrief() {
@@ -883,6 +951,9 @@ export function createHome(world) {
 
     const panel = el.querySelector('#home-brief');
     const room  = el.querySelector('#home-room');
+
+    // Unsubscribe store listener
+    if (panel?._briefUnsub) { panel._briefUnsub(); panel._briefUnsub = null; }
 
     if (room) room.style.filter = '';
 

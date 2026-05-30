@@ -661,12 +661,12 @@ export function createCascade({ item, onBack, onComplete }) {
           if (vIdx < 0) return;
           const entry = vehicles[vIdx][collection]?.[index] || {};
 
+          const histDateId = `h-date-${vehicleId}-${collection}-${index}`;
           form.innerHTML = `
             <div style="display:flex;flex-direction:column;gap:8px;padding:8px 0 4px;">
               <input class="h-type"  placeholder="type"     value="${entry.label || entry.type?.replace(/_/g,' ') || ''}"
                 style="${editInputStyle()}" />
-              <input class="h-date"  placeholder="date (e.g. 2025-01-15)"  value="${entry.date  || ''}"
-                type="text" style="${editInputStyle()}" />
+              ${buildDateField(histDateId, 'Date', entry.date || '', {})}
               <input class="h-km"    placeholder="km"       value="${entry.mileage || entry.mileage_approx || ''}"
                 inputmode="numeric"  style="${editInputStyle()}" />
               <input class="h-shop"  placeholder="shop"     value="${entry.shop  || ''}"
@@ -697,14 +697,18 @@ export function createCascade({ item, onBack, onComplete }) {
           `;
           summary.style.display = 'none';
           form.style.display    = 'block';
+          attachCalendarListeners(form);
 
           form.querySelector('.h-save').addEventListener('click', (e) => {
             e.stopPropagation();
             const typeFieldVal = form.querySelector('.h-type').value.trim();
+            const dateHidden   = form.querySelector(`#${histDateId}`);
+            const dateText     = form.querySelector(`#${histDateId}-text`);
+            const dateVal      = dateHidden?.value || dateText?.value || entry.date || '';
             const updated = {
               type:    entry.type || typeFieldVal || entry.label,
               label:   typeFieldVal || entry.label || entry.type?.replace(/_/g,' ') || null,
-              date:    form.querySelector('.h-date').value.trim()  || entry.date,
+              date:    dateVal,
               mileage: parseInt(form.querySelector('.h-km').value.trim(), 10) || entry.mileage || entry.mileage_approx || null,
               shop:    form.querySelector('.h-shop').value.trim()  || entry.shop  || null,
               notes:   form.querySelector('.h-notes').value.trim() || entry.notes || null,
