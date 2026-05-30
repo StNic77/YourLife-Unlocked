@@ -483,9 +483,11 @@ export function createHome(world) {
 
   // ── Brief panel ───────────────────────────────────────────────────────────
 
-  // Opens the calendar domain — full screen, mounts over #app
-  function openCalendar() {
+  // Opens the calendar domain — full screen, mounts over #app.
+  // Pass an ISO date string to open directly to that day's view.
+  function openCalendar(date) {
     const cal = createCalendar({
+      initialDate: date || null,
       onClose: () => {
         // Calendar closed — nothing to do, room is still underneath
       },
@@ -560,17 +562,66 @@ export function createHome(world) {
   }
 
   // Primary brief — full depth, sectioned
-  function buildPrimaryBriefHTML(content) {
-    const sectionsHTML = content.sections.map(section => `
+  // Sections marked collapsible:true render as a tappable heading row.
+  // Items inside are hidden until the user expands. State is local to this render.
+  // Collapsed state resets each time the brief re-renders (intentional — brief is ephemeral).
+
+  // Collapsible state — keyed by section heading, local to this brief open
+  const _collapsedState = {};
+
+  function buildSectionHTML(section) {
+    if (!section.collapsible) {
+      // Standard section — always visible
+      return `
+        <div style="margin-bottom:28px;">
+          <div style="
+            font-family:var(--font-sans);font-weight:200;
+            font-size:9px;letter-spacing:0.35em;text-transform:uppercase;
+            color:rgba(240,235,218,0.35);margin-bottom:12px;
+          ">${section.heading}</div>
+          ${section.items.map(item => buildItemRow(item)).join('')}
+        </div>
+      `;
+    }
+
+    // Collapsible section — heading is a button, items toggle
+    const sectionId  = 'section-' + section.heading.replace(/\s+/g, '-').toLowerCase();
+    const isCollapsed = _collapsedState[section.heading] !== undefined
+      ? _collapsedState[section.heading]
+      : section.collapsed !== false;  // default to section.collapsed value
+
+    const chevron = isCollapsed ? '›' : '‹';
+    const itemsHTML = section.items.map(item => buildItemRow(item)).join('');
+
+    return `
       <div style="margin-bottom:28px;">
-        <div style="
-          font-family:var(--font-sans);font-weight:200;
-          font-size:9px;letter-spacing:0.35em;text-transform:uppercase;
-          color:rgba(240,235,218,0.35);margin-bottom:12px;
-        ">${section.heading}</div>
-        ${section.items.map(item => buildItemRow(item)).join('')}
+        <button
+          class="collapsible-heading"
+          data-section="${section.heading}"
+          style="
+            display:flex;justify-content:space-between;align-items:center;
+            width:100%;margin-bottom:${isCollapsed ? '0' : '12px'};
+            font-family:var(--font-sans);font-weight:200;
+            font-size:9px;letter-spacing:0.35em;text-transform:uppercase;
+            color:rgba(240,235,218,0.35);
+            transition:color 0.2s;
+          "
+        >
+          <span>${section.heading}</span>
+          <span style="font-size:14px;letter-spacing:0;opacity:0.4;">${chevron}</span>
+        </button>
+        <div
+          id="${sectionId}-items"
+          style="display:${isCollapsed ? 'none' : 'block'};"
+        >
+          ${itemsHTML}
+        </div>
       </div>
-    `).join('');
+    `;
+  }
+
+  function buildPrimaryBriefHTML(content) {
+    const sectionsHTML = content.sections.map(section => buildSectionHTML(section)).join('');
 
     return `
       <div style="
@@ -729,10 +780,11 @@ export function createHome(world) {
       ? 'border-left:2px solid rgba(210,160,60,0.7);padding-left:12px;'
       : 'border-left:2px solid rgba(240,235,218,0.08);padding-left:12px;';
 
-    const hasCascade = !!(item.cascade_type && item.item_id);
-    const hasVehicle = !!item.vehicle_id;
-    const hasPerson  = !!item.person_id;
-    const hasTask    = !!item.task_id && !hasCascade;
+    const hasCascade      = !!(item.cascade_type && item.item_id);
+    const hasVehicle      = !!item.vehicle_id;
+    const hasPerson       = !!item.person_id;
+    const hasTask         = !!item.task_id && !hasCascade;
+    const hasCalendarDate = !!item.calendar_date && !hasCascade && !hasVehicle && !hasPerson && !hasTask;
 
     const snoozeBtn = (item.urgent && item.snoozable && item.item_id) ? `
       <button class="snooze-btn" data-id="${item.item_id}" style="
@@ -767,7 +819,7 @@ export function createHome(world) {
       ">handle →</button>
     ` : '';
 
-    const labelStyle = (hasCascade || hasVehicle || hasPerson || hasTask)
+    const labelStyle = (hasCascade || hasVehicle || hasPerson || hasTask || hasCalendarDate)
       ? `cursor:pointer;transition:color 0.15s ease;`
       : '';
 
@@ -779,7 +831,9 @@ export function createHome(world) {
           ? `class="person-detail-label" data-person-id="${item.person_id}"`
           : hasTask
             ? `class="task-detail-label" data-task-id="${item.task_id}"`
-            : '';
+            : hasCalendarDate
+              ? `class="calendar-date-label" data-calendar-date="${item.calendar_date}"`
+              : '';
 
     return `
       <div style="
@@ -794,7 +848,7 @@ export function createHome(world) {
             color:${item.urgent ? 'rgba(240,235,218,0.9)' : 'rgba(240,235,218,0.65)'};
             margin-bottom:${item.value ? '4px' : '0'};
             ${labelStyle}
-          ">${item.label}${(hasVehicle || hasPerson || hasTask) ? '<span style="font-size:10px;letter-spacing:0.15em;color:rgba(240,235,218,0.2);margin-left:8px;">view →</span>' : ''}</div>
+          ">${item.label}${(hasVehicle || hasPerson || hasTask || hasCalendarDate) ? '<span style="font-size:10px;letter-spacing:0.15em;color:rgba(240,235,218,0.2);margin-left:8px;">view →</span>' : ''}</div>
           ${item.value ? `<div style="
             font-family:var(--font-sans);font-weight:200;
             font-size:11px;letter-spacing:0.06em;
@@ -815,6 +869,27 @@ export function createHome(world) {
   // ── Brief listeners ───────────────────────────────────────────────────────
 
   function attachBriefListeners(panel, spot, content) {
+    // Collapsible section headings — toggle items visibility
+    panel.querySelectorAll('.collapsible-heading').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const sectionName = btn.dataset.section;
+        const sectionId   = 'section-' + sectionName.replace(/\s+/g, '-').toLowerCase();
+        const itemsDiv    = panel.querySelector(`#${sectionId}-items`);
+        const chevron     = btn.querySelector('span:last-child');
+        if (!itemsDiv) return;
+
+        const isHidden = itemsDiv.style.display === 'none';
+        itemsDiv.style.display  = isHidden ? 'block' : 'none';
+        chevron.textContent     = isHidden ? '‹' : '›';
+        btn.style.marginBottom  = isHidden ? '12px' : '0';
+
+        // Update collapsed state so re-renders respect the user's choice
+        _collapsedState[sectionName] = !isHidden;
+      });
+      btn.addEventListener('mouseenter', () => btn.style.color = 'rgba(240,235,218,0.6)');
+      btn.addEventListener('mouseleave', () => btn.style.color = 'rgba(240,235,218,0.35)');
+    });
+
     // Close button
     const closeBtn = panel.querySelector('#brief-close');
     if (closeBtn) {
@@ -977,6 +1052,16 @@ export function createHome(world) {
 
     panel.querySelectorAll('.task-detail-label').forEach(label => {
       label.addEventListener('click',      () => openTaskDetail(label.dataset.taskId));
+      label.addEventListener('mouseenter', () => label.style.color = 'rgba(210,160,60,0.9)');
+      label.addEventListener('mouseleave', () => label.style.color = 'rgba(240,235,218,0.65)');
+    });
+
+    // Calendar date — opens calendar to that specific day
+    panel.querySelectorAll('.calendar-date-label').forEach(label => {
+      label.addEventListener('click', () => {
+        closeBrief();
+        setTimeout(() => openCalendar(label.dataset.calendarDate), 280);
+      });
       label.addEventListener('mouseenter', () => label.style.color = 'rgba(210,160,60,0.9)');
       label.addEventListener('mouseleave', () => label.style.color = 'rgba(240,235,218,0.65)');
     });

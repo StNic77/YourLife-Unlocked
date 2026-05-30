@@ -1,6 +1,6 @@
 # YOUR LIFE: UNLOCKED
 ## Rules, Principles & Design Guidance
-*Living Document — Updated Each Session | Last Revised: May 29, 2026 | Confidential*
+*Living Document — Updated Each Session | Last Revised: May 29, 2026 (Session 24) | Confidential*
 
 ---
 
@@ -470,6 +470,78 @@ This registry grows as domains are built. The calendar receives new signal types
 
 ---
 
+
+### 2.17 The Domain File Rule
+*(Session 24)*
+
+> **Every domain has its own `.js` file. `home.js` is the host. It renders and routes. It does not own domain logic.**
+
+Domain logic — data shape, signal writing, signal retirement, grab-and-go brief content — lives in the domain file. `home.js` imports from domain files. Domain files never import from `home.js`.
+
+**The current domain files:**
+
+| File | Status |
+|---|---|
+| `vehicles.js` | Built Session 24 |
+| `maintenance.js` | Built Session 24 |
+| `calendar.js` | Built Session 24 |
+| `health.js` | Next — not yet built |
+| `team.js` | Exists — birthday signal logic to migrate from `atak.js` |
+
+**Why this matters:** Before this rule was locked, vehicle and maintenance logic lived in `home.js`. Intelligence and rendering were tangled. Every new domain added weight to the wrong file. The extraction produced cleaner, testable, portable domain modules. This pattern is now locked for every domain going forward.
+
+**Check:** Before adding logic to `home.js` — does this belong to a domain? If yes, it goes in the domain file.
+
+---
+
+### 2.18 The Brief Silence Rule
+*(Session 24)*
+
+> **The brief does not speak when it has nothing to say. Sections disappear when empty. Silence is the message.**
+
+No empty states. No placeholder copy. No "nothing here yet." No cute messages about a clear horizon. If a brief section has nothing to surface, it does not render. The user sees a shorter brief. A short brief on a clear day is good news — the app communicates that by its absence, not by announcing it.
+
+**Applied to every section:**
+- **Today** — disappears entirely when today is clear
+- **This Week** — disappears when temporal analysis has nothing to surface
+- **This Month** — disappears when no consequence-scored items exist in the window
+- **On the Horizon** — disappears when no low-consequence items exist in the window
+- **Needs Attention** — disappears when nothing is urgent or overdue
+
+**Your Team and In Focus** are always present but collapsed — they are reference sections, not intelligence sections. Different rule applies.
+
+**Check:** Before adding any empty state copy to a brief section — does this section earn its presence? If it has nothing to say, remove it.
+
+---
+
+### 2.19 The Consequence Radius Principle
+*(Session 24)*
+
+> **Items route to brief sections based on consequence radius, not date alone. The ATAK scores consequence automatically. The user never configures this.**
+
+Two items can be equally far away in time and route to completely different sections of the brief. A work trip 20 days out routes to This Month. A furnace filter 20 days out routes to On the Horizon. The difference is not urgency — neither is urgent. The difference is consequence radius: what else does this touch?
+
+**The scoring model (0–4):**
+
+| Points | Condition |
+|---|---|
+| +2 | Range entry — blocks capacity, creates before/after pressure |
+| +1 | Falls during another range entry |
+| +1 | Names a team member in the title |
+| +1 | Health domain signal |
+| +1 | Vehicle signal that is overdue |
+
+**Score 0** → On the Horizon (surfaces at 30 days, awareness only)
+**Score 1+** → This Month (surfaces within 30 days, shapes the month)
+
+**The scores are additive.** A health appointment that falls during a work trip and names a team member scores 3 — it surfaces prominently in This Month, and the ATAK can reason about the conflict.
+
+**This model will grow.** As more domains are built, more consequence conditions will be identified and added to the scoring engine. The model is a starting point, not a ceiling.
+
+**Check:** Before deciding where an item surfaces in the brief — what does this item touch? Score it. Route it accordingly.
+
+---
+
 ## PART 3 — ONBOARDING RULES
 
 Rules that govern the onboarding experience specifically.
@@ -682,6 +754,7 @@ The Meadow person will tap *"Something I've been avoiding"* and for the first ti
 | Session 21 | Onboarding Generosity Principle added as 3.5. Family domain, Finances domain, Life Events layer parked indefinitely. Has something changed? named and locked as the intelligent intake domain. Team domain home screen tile retired — absorbed by ATAK + Has something changed? |
 | Session 22 | Date Input Rule added as 2.4b. Domain Cluster Principle added as 2.12. Health Intelligence Boundary added as 2.13. Health & Well-being confirmed as the app's first domain cluster — Medical, Physical, Mental Well-being as sub-domains. Never give medical advice added to Part 6. Manufacturer interval vs user preference added to open decisions. |
 | Session 23 | ATAK extracted from home.js into atak.js — All Source Intelligence Cell, owns all cross-domain synthesis. ATAK Architecture locked as 2.14. Calendar as Authoritative Temporal Layer locked as 2.15. Domain Signal Contract locked as 2.16. Calendar Domain Spec produced. |
+| Session 24 | Domain File Rule locked as 2.17 — every domain has its own .js file. Brief Silence Rule locked as 2.18 — sections disappear when empty. Consequence Radius Principle locked as 2.19 — items route by consequence score not date alone. Seven-section brief architecture built. Calendar domain built (month grid, day view, range entries, recurring toggle). vehicles.js and maintenance.js extracted. Consequence scoring engine built in atak.js. Share Extension identified as dev phase requirement. |
 
 ---
 

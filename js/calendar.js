@@ -86,9 +86,30 @@ function getEntries() {
   });
 }
 
-// Get entries for a specific day
+// Get entries for a specific day — includes range entries spanning this date
 function getEntriesForDay(dateStr) {
-  return getEntries().filter(e => e.date === dateStr);
+  const d = parseDate(dateStr);
+  if (!d) return [];
+  return getEntries().filter(e => {
+    if (e.is_range && e.date_start && e.date_end) {
+      const start = parseDate(e.date_start);
+      const end   = parseDate(e.date_end);
+      return start && end && d >= start && d <= end;
+    }
+    return e.date === dateStr;
+  });
+}
+
+// Get all range entries that overlap with the current month view
+function getRangeEntriesForMonth(year, month) {
+  const monthStart = new Date(year, month, 1);
+  const monthEnd   = new Date(year, month + 1, 0);
+  return getEntries().filter(e => {
+    if (!e.is_range || !e.date_start || !e.date_end) return false;
+    const start = parseDate(e.date_start);
+    const end   = parseDate(e.date_end);
+    return start && end && start <= monthEnd && end >= monthStart;
+  });
 }
 
 // Pressure weight — for sorting and visual priority
@@ -117,19 +138,29 @@ function dayHasEntries(dateStr) {
 // ---------------------------------------------------------------------------
 
 export function addUserEntry(entry) {
-  const calendar = store.get('calendar') || [];
+  const calendar   = store.get('calendar') || [];
+  const isRange    = !!(entry.date_end && entry.date_end !== entry.date_start);
   const newEntry = {
-    id:         newEntryId(),
-    type:       'user_entry',
-    title:      entry.title.trim(),
-    date:       entry.date,
-    time_start: entry.time_start || null,
-    time_end:   entry.time_end   || null,
-    all_day:    !entry.time_start,
-    notes:      entry.notes || '',
-    source:     'user',
-    domain:     null,
-    created_at: new Date().toISOString(),
+    id:                  newEntryId(),
+    type:                'user_entry',
+    title:               entry.title.trim(),
+    // For point-in-time entries: date is set, date_start/date_end are null.
+    // For range entries: date equals date_start (for backward compat),
+    //   date_start and date_end define the span, is_range is true.
+    date:                entry.date_start || entry.date,
+    date_start:          isRange ? entry.date_start : null,
+    date_end:            isRange ? entry.date_end   : null,
+    is_range:            isRange,
+    time_start:          entry.time_start || null,
+    time_end:            entry.time_end   || null,
+    all_day:             !entry.time_start,
+    notes:               entry.notes || '',
+    recurring:           entry.recurring || false,
+    recurring_frequency: entry.recurring ? (entry.recurring_frequency || null) : null,
+    // recurring_frequency values (future): 'weekly' | 'monthly' | 'annual'
+    source:              'user',
+    domain:              null,
+    created_at:          new Date().toISOString(),
   };
   store.set('calendar', [...calendar, newEntry]);
   return newEntry;
@@ -153,15 +184,21 @@ export function deleteUserEntry(entryId) {
 //   cal.open(document.getElementById('app'));
 // ---------------------------------------------------------------------------
 
-export function createCalendar({ onClose } = {}) {
+export function createCalendar({ onClose, initialDate } = {}) {
 
   let viewDate     = new Date();   // month currently shown in grid
-  let selectedDay  = null;         // ISO date string — currently open day view
+  let selectedDay  = initialDate || null;  // ISO date string — open to this day if provided
   let addingEntry  = false;        // entry form open
   let el           = null;         // the mounted DOM element
 
-  viewDate.setDate(1);             // always start at the 1st of the month
-  viewDate.setHours(0, 0, 0, 0);
+  // If opening to a specific date, show that month
+  if (initialDate) {
+    const d = new Date(initialDate + 'T00:00:00');
+    viewDate = new Date(d.getFullYear(), d.getMonth(), 1);
+  } else {
+    viewDate.setDate(1);
+    viewDate.setHours(0, 0, 0, 0);
+  }
 
   // ── Open / close ──────────────────────────────────────────────────────────
 
@@ -318,21 +355,36 @@ export function createCalendar({ onClose } = {}) {
   }
 
   // ── Month grid ────────────────────────────────────────────────────────────
+  //
+  // Two-layer rendering:
+  //   Layer 1 — range bars: positioned behind day numbers, span multiple cells
+  //   Layer 2 — day cells: tap targets with numbers and point-in-time indicators
+  //
+  // Range bars use absolute positioning within a relative wrapper.
+  // Each bar is computed from the grid column positions of its start and end days.
 
   function buildGrid() {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = [
+      'position:relative;',
+      'padding:0 20px;',
+      'flex-shrink:0;',
+    ].join('');
+
+    const todayDate   = today();
+    const year        = viewDate.getFullYear();
+    const month       = viewDate.getMonth();
+    const firstDay    = new Date(year, month, 1).getDay(); // 0=Sun
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cellH       = 46; // px — height per row including gap
+
+    // Grid element — day cells
     const grid = document.createElement('div');
     grid.style.cssText = [
       'display:grid;grid-template-columns:repeat(7,1fr);',
-      'padding:0 20px;',
-      'flex-shrink:0;',
       'gap:2px 0;',
+      'position:relative;z-index:1;',
     ].join('');
-
-    const todayDate  = today();
-    const year       = viewDate.getFullYear();
-    const month      = viewDate.getMonth();
-    const firstDay   = new Date(year, month, 1).getDay(); // 0=Sun
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
 
     // Empty cells before the 1st
     for (let i = 0; i < firstDay; i++) {
@@ -343,13 +395,14 @@ export function createCalendar({ onClose } = {}) {
 
     // Day cells
     for (let d = 1; d <= daysInMonth; d++) {
-      const date      = new Date(year, month, d);
-      const dateStr   = toISO(date);
-      const isToday   = sameDay(date, todayDate);
+      const date       = new Date(year, month, d);
+      const dateStr    = toISO(date);
+      const isToday    = sameDay(date, todayDate);
       const isSelected = dateStr === selectedDay;
       const hasEntries = dayHasEntries(dateStr);
       const hasWarning = dayHasWarning(dateStr);
-      const isPast    = date < todayDate && !isToday;
+      const isPast     = date < todayDate && !isToday;
+      const inRange    = _dayIsInAnyRange(dateStr);
 
       const cell = document.createElement('button');
       cell.style.cssText = [
@@ -359,9 +412,7 @@ export function createCalendar({ onClose } = {}) {
         'border:none;background:transparent;cursor:pointer;',
         '-webkit-tap-highlight-color:transparent;',
         'border-radius:4px;',
-        isSelected
-          ? 'background:rgba(240,235,218,0.1);'
-          : '',
+        isSelected ? 'background:rgba(240,235,218,0.1);' : '',
         'transition:background 0.15s ease;',
       ].join('');
 
@@ -374,7 +425,9 @@ export function createCalendar({ onClose } = {}) {
           ? 'color:rgba(240,235,218,0.95);'
           : isPast
             ? 'color:rgba(240,235,218,0.25);'
-            : 'color:rgba(240,235,218,0.7);',
+            : inRange
+              ? 'color:rgba(240,235,218,0.85);'
+              : 'color:rgba(240,235,218,0.7);',
       ].join('');
       num.textContent = d;
       cell.appendChild(num);
@@ -390,17 +443,20 @@ export function createCalendar({ onClose } = {}) {
         cell.appendChild(dot);
       }
 
-      // Entry indicator
+      // Point-in-time entry indicator (not shown for range days — bar handles that)
       if (hasEntries && !isToday) {
-        const dot = document.createElement('div');
-        dot.style.cssText = [
-          'position:absolute;bottom:6px;left:50%;transform:translateX(-50%);',
-          'width:3px;height:3px;border-radius:50%;',
-          hasWarning
-            ? 'background:rgba(220,60,60,0.8);'
-            : 'background:rgba(210,160,60,0.6);',
-        ].join('');
-        cell.appendChild(dot);
+        const nonRangeEntries = getEntriesForDay(dateStr).filter(e => !e.is_range);
+        if (nonRangeEntries.length > 0) {
+          const dot = document.createElement('div');
+          dot.style.cssText = [
+            'position:absolute;bottom:6px;left:50%;transform:translateX(-50%);',
+            'width:3px;height:3px;border-radius:50%;',
+            hasWarning
+              ? 'background:rgba(220,60,60,0.8);'
+              : 'background:rgba(210,160,60,0.6);',
+          ].join('');
+          cell.appendChild(dot);
+        }
       }
 
       cell.addEventListener('click', () => {
@@ -418,7 +474,109 @@ export function createCalendar({ onClose } = {}) {
       grid.appendChild(cell);
     }
 
-    return grid;
+    wrapper.appendChild(grid);
+
+    // ── Range bars — absolutely positioned behind day cells ─────────────────
+    // Each range entry gets a bar rendered per visible row it spans.
+    // Bars are layered below the grid (z-index:0) so day taps still work.
+
+    const rangeEntries = getRangeEntriesForMonth(year, month);
+    const totalCells   = firstDay + daysInMonth;
+    const numRows      = Math.ceil(totalCells / 7);
+
+    // Bar layer — same dimensions as the grid, sits behind it
+    const barLayer = document.createElement('div');
+    barLayer.style.cssText = [
+      'position:absolute;top:0;left:20px;right:20px;',
+      `height:${numRows * cellH}px;`,
+      'pointer-events:none;z-index:0;',
+    ].join('');
+
+    rangeEntries.forEach((entry, entryIdx) => {
+      const rangeStart  = parseDate(entry.date_start);
+      const rangeEnd    = parseDate(entry.date_end);
+      const monthStart  = new Date(year, month, 1);
+      const monthEnd    = new Date(year, month + 1, 0);
+
+      // Clamp to visible month
+      const visStart    = rangeStart < monthStart ? monthStart : rangeStart;
+      const visEnd      = rangeEnd   > monthEnd   ? monthEnd   : rangeEnd;
+
+      const startDay    = visStart.getDate();
+      const endDay      = visEnd.getDate();
+
+      // Grid positions (0-indexed from Sunday col 0)
+      const startCell   = firstDay + startDay - 1;
+      const endCell     = firstDay + endDay - 1;
+
+      // Vertical offset per stacked range (up to 3 bars per day)
+      const barH        = 4;
+      const barGap      = 2;
+      const barOffset   = entryIdx % 3; // stack up to 3 ranges
+      const barTop      = 6 + barOffset * (barH + barGap); // px from top of cell
+
+      // Draw bar row by row across weeks
+      let cell = startCell;
+      while (cell <= endCell) {
+        const rowStart   = Math.floor(cell / 7) * 7;
+        const rowEnd     = rowStart + 6;
+        const segStart   = cell;
+        const segEnd     = Math.min(endCell, rowEnd);
+        const row        = Math.floor(cell / 7);
+
+        const colStart   = segStart % 7;  // 0–6
+        const colSpan    = segEnd - segStart + 1;
+        const colW       = 100 / 7;       // % width of one column
+
+        const isFirst    = cell === startCell;
+        const isLast     = segEnd === endCell;
+
+        const bar = document.createElement('div');
+        bar.style.cssText = [
+          'position:absolute;',
+          `top:${row * cellH + barTop}px;`,
+          `left:${colStart * colW}%;`,
+          `width:${colSpan * colW}%;`,
+          `height:${barH}px;`,
+          'background:rgba(180,200,240,0.25);',
+          `border-radius:${isFirst ? '2px' : '0'} ${isLast ? '2px' : '0'} ${isLast ? '2px' : '0'} ${isFirst ? '2px' : '0'};`,
+        ].join('');
+
+        // Label on the first segment of the bar
+        if (isFirst) {
+          bar.title = entry.title;
+          const label = document.createElement('span');
+          label.style.cssText = [
+            'position:absolute;left:6px;top:50%;transform:translateY(-50%);',
+            'font-family:var(--font-sans);font-weight:200;',
+            'font-size:8px;letter-spacing:0.06em;',
+            'color:rgba(180,200,240,0.7);',
+            'white-space:nowrap;overflow:hidden;',
+            `max-width:${colSpan * colW - 8}%;`,
+          ].join('');
+          label.textContent = entry.title;
+          bar.appendChild(label);
+        }
+
+        barLayer.appendChild(bar);
+        cell = rowEnd + 1; // next row
+      }
+    });
+
+    wrapper.appendChild(barLayer);
+    return wrapper;
+  }
+
+  // Returns true if this date falls inside any range entry
+  function _dayIsInAnyRange(dateStr) {
+    const d = parseDate(dateStr);
+    if (!d) return false;
+    return (store.get('calendar') || []).some(e => {
+      if (!e.is_range || !e.date_start || !e.date_end) return false;
+      const start = parseDate(e.date_start);
+      const end   = parseDate(e.date_end);
+      return start && end && d >= start && d <= end;
+    });
   }
 
   // ── Day view ──────────────────────────────────────────────────────────────
@@ -622,21 +780,92 @@ export function createCalendar({ onClose } = {}) {
       required:    true,
     }));
 
-    // Time start field
-    form.appendChild(_buildFormField({
+    // ── Date range toggle ────────────────────────────────────────────────────
+    let isDateRange = false;
+
+    const rangeToggleWrap = document.createElement('div');
+    rangeToggleWrap.style.cssText = [
+      'display:flex;align-items:center;justify-content:space-between;',
+      'padding:10px 0 10px;',
+    ].join('');
+
+    const rangeToggleLabel = document.createElement('div');
+    rangeToggleLabel.style.cssText = [
+      'font-family:var(--font-sans);font-weight:200;',
+      'font-size:12px;letter-spacing:0.06em;',
+      'color:rgba(240,235,218,0.4);',
+    ].join('');
+    rangeToggleLabel.textContent = 'Date range';
+
+    const rangeToggleBtn = document.createElement('button');
+    rangeToggleBtn.style.cssText = [
+      'position:relative;width:36px;height:20px;border-radius:10px;',
+      'background:rgba(240,235,218,0.1);',
+      'border:0.5px solid rgba(240,235,218,0.2);',
+      'transition:background 0.2s ease, border-color 0.2s ease;',
+      'flex-shrink:0;',
+    ].join('');
+    rangeToggleBtn.innerHTML = `
+      <span style="
+        position:absolute;top:3px;left:3px;
+        width:12px;height:12px;border-radius:50%;
+        background:rgba(240,235,218,0.35);
+        transition:transform 0.2s ease, background 0.2s ease;
+      "></span>
+    `;
+
+    // End date field — hidden until range toggle is on
+    const endDateWrap = _buildFormField({
+      id:          'entry-date-end',
+      placeholder: `End date (e.g. ${toISO(addDays(parseDate(dateStr), 3))})`,
+      type:        'text',
+      required:    false,
+    });
+    endDateWrap.style.display = 'none';
+
+    rangeToggleBtn.addEventListener('click', () => {
+      isDateRange = !isDateRange;
+      const knob = rangeToggleBtn.querySelector('span');
+      if (isDateRange) {
+        rangeToggleBtn.style.background   = 'rgba(180,200,240,0.2)';
+        rangeToggleBtn.style.borderColor  = 'rgba(180,200,240,0.5)';
+        knob.style.transform              = 'translateX(16px)';
+        knob.style.background             = 'rgba(180,200,240,0.9)';
+        rangeToggleLabel.style.color      = 'rgba(240,235,218,0.7)';
+        endDateWrap.style.display         = 'block';
+      } else {
+        rangeToggleBtn.style.background   = 'rgba(240,235,218,0.1)';
+        rangeToggleBtn.style.borderColor  = 'rgba(240,235,218,0.2)';
+        knob.style.transform              = 'translateX(0)';
+        knob.style.background             = 'rgba(240,235,218,0.35)';
+        rangeToggleLabel.style.color      = 'rgba(240,235,218,0.4)';
+        endDateWrap.style.display         = 'none';
+      }
+    });
+
+    rangeToggleWrap.appendChild(rangeToggleLabel);
+    rangeToggleWrap.appendChild(rangeToggleBtn);
+    form.appendChild(rangeToggleWrap);
+    form.appendChild(endDateWrap);
+    // ── End date range toggle ─────────────────────────────────────────────────
+
+    // Time start field — hidden for range entries
+    const timeStartWrap = _buildFormField({
       id:          'entry-time-start',
       placeholder: 'Start time — optional (e.g. 14:00)',
       type:        'text',
       required:    false,
-    }));
+    });
+    form.appendChild(timeStartWrap);
 
     // Time end field
-    form.appendChild(_buildFormField({
+    const timeEndWrap = _buildFormField({
       id:          'entry-time-end',
       placeholder: 'End time — optional (e.g. 16:00)',
       type:        'text',
       required:    false,
-    }));
+    });
+    form.appendChild(timeEndWrap);
 
     // Notes field
     form.appendChild(_buildFormField({
@@ -645,6 +874,64 @@ export function createCalendar({ onClose } = {}) {
       type:        'textarea',
       required:    false,
     }));
+
+    // Recurring toggle
+    let isRecurring = false;
+
+    const recurringWrap = document.createElement('div');
+    recurringWrap.style.cssText = [
+      'display:flex;align-items:center;justify-content:space-between;',
+      'padding:12px 0;',
+      'border-top:0.5px solid rgba(240,235,218,0.06);',
+      'margin-top:4px;',
+    ].join('');
+
+    const recurringLabel = document.createElement('div');
+    recurringLabel.style.cssText = [
+      'font-family:var(--font-sans);font-weight:200;',
+      'font-size:12px;letter-spacing:0.06em;',
+      'color:rgba(240,235,218,0.4);',
+    ].join('');
+    recurringLabel.textContent = 'Recurring';
+
+    const recurringToggle = document.createElement('button');
+    recurringToggle.style.cssText = [
+      'position:relative;width:36px;height:20px;border-radius:10px;',
+      'background:rgba(240,235,218,0.1);',
+      'border:0.5px solid rgba(240,235,218,0.2);',
+      'transition:background 0.2s ease, border-color 0.2s ease;',
+      'flex-shrink:0;',
+    ].join('');
+    recurringToggle.innerHTML = `
+      <span style="
+        position:absolute;top:3px;left:3px;
+        width:12px;height:12px;border-radius:50%;
+        background:rgba(240,235,218,0.35);
+        transition:transform 0.2s ease, background 0.2s ease;
+      "></span>
+    `;
+
+    recurringToggle.addEventListener('click', () => {
+      isRecurring = !isRecurring;
+      const knob = recurringToggle.querySelector('span');
+      if (isRecurring) {
+        recurringToggle.style.background    = 'rgba(210,160,60,0.25)';
+        recurringToggle.style.borderColor   = 'rgba(210,160,60,0.5)';
+        knob.style.transform                = 'translateX(16px)';
+        knob.style.background               = 'rgba(210,160,60,0.9)';
+        recurringLabel.style.color          = 'rgba(240,235,218,0.7)';
+      } else {
+        recurringToggle.style.background    = 'rgba(240,235,218,0.1)';
+        recurringToggle.style.borderColor   = 'rgba(240,235,218,0.2)';
+        knob.style.transform                = 'translateX(0)';
+        knob.style.background               = 'rgba(240,235,218,0.35)';
+        recurringLabel.style.color          = 'rgba(240,235,218,0.4)';
+      }
+    });
+
+    recurringWrap.appendChild(recurringLabel);
+    recurringWrap.appendChild(recurringToggle);
+    form.appendChild(recurringWrap);
 
     // Buttons row
     const btns = document.createElement('div');
@@ -659,13 +946,32 @@ export function createCalendar({ onClose } = {}) {
         _shake(form.querySelector('#entry-title'));
         return;
       }
-      addUserEntry({
-        title,
-        date:       dateStr,
-        time_start: form.querySelector('#entry-time-start')?.value?.trim() || null,
-        time_end:   form.querySelector('#entry-time-end')?.value?.trim()   || null,
-        notes:      form.querySelector('#entry-notes')?.value?.trim()      || '',
-      });
+
+      if (isDateRange) {
+        const dateEnd = form.querySelector('#entry-date-end')?.value?.trim();
+        if (!dateEnd) {
+          _shake(form.querySelector('#entry-date-end'));
+          return;
+        }
+        addUserEntry({
+          title,
+          date_start: dateStr,
+          date_end:   dateEnd,
+          notes:      form.querySelector('#entry-notes')?.value?.trim() || '',
+          recurring:  isRecurring,
+        });
+      } else {
+        addUserEntry({
+          title,
+          date:       dateStr,
+          date_start: null,
+          date_end:   null,
+          time_start: form.querySelector('#entry-time-start')?.value?.trim() || null,
+          time_end:   form.querySelector('#entry-time-end')?.value?.trim()   || null,
+          notes:      form.querySelector('#entry-notes')?.value?.trim()      || '',
+          recurring:  isRecurring,
+        });
+      }
       addingEntry = false;
       // store change triggers re-render via subscription
     });
