@@ -16,6 +16,12 @@ const defaults = {
     children: [],
     coordinating: {},
   },
+  // domain arrays
+  vehicles: [],
+  maintenance: [],
+  calendar: [],
+  health: {},           // single object — Medical, Physical, Mental sub-domains written here
+
   user: {
     name: null,
     pronouns: null,        // 'he' | 'she' | 'they'

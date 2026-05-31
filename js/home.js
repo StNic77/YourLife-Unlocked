@@ -26,6 +26,10 @@ import {
   getMaintenanceBrief,
   syncMaintenanceSignals,
 } from './maintenance.js';
+import {
+  getHealthBrief,
+  syncHealthSignals,
+} from './health.js';
 
 // ---------------------------------------------------------------------------
 // DEV MODE — Hotspot visualiser
@@ -242,16 +246,7 @@ function getDomainBrief(domain, world) {
     }
 
     case 'health':
-      return {
-        title: 'Health',
-        sections: [{
-          label:  'Nothing tracked yet',
-          value:  'I\'ll keep an eye on what you share',
-          urgent: false,
-        }],
-        cta:        'Add something',
-        cta_action: 'add_health',
-      };
+      return getHealthBrief();
 
     case 'maintenance':
       return getMaintenanceBrief();
@@ -293,6 +288,7 @@ export function createHome(world) {
   // Sync all domain signals to store.calendar on load
   syncVehicleSignals();
   syncMaintenanceSignals();
+  syncHealthSignals();
 
   const urgentItems  = getUrgentItems();
   const hotspots     = HOTSPOT_MAPS[world.id] || HOTSPOT_MAPS.operator;
@@ -676,7 +672,9 @@ export function createHome(world) {
 
   // Domain brief — grab and go, tight card
   function buildDomainBriefHTML(content, spot) {
-    const rowsHTML = (content.sections || []).map(item => buildItemRow(item)).join('');
+    const rowsHTML = (content.sections || []).map(item =>
+      item.custom_html ? item.custom_html : buildItemRow(item)
+    ).join('');
 
     const inputHTML = content.input ? `
       <div style="margin-top:20px;">
@@ -780,11 +778,11 @@ export function createHome(world) {
       ? 'border-left:2px solid rgba(210,160,60,0.7);padding-left:12px;'
       : 'border-left:2px solid rgba(240,235,218,0.08);padding-left:12px;';
 
-    const hasCascade      = !!(item.cascade_type && item.item_id);
-    const hasVehicle      = !!item.vehicle_id;
-    const hasPerson       = !!item.person_id;
-    const hasTask         = !!item.task_id && !hasCascade;
-    const hasCalendarDate = !!item.calendar_date && !hasCascade && !hasVehicle && !hasPerson && !hasTask;
+    const hasCascade         = !!(item.cascade_type && item.item_id);
+    const hasVehicle         = !!item.vehicle_id;
+    const hasPerson          = !!item.person_id;
+    const hasTask            = !!item.task_id && !hasCascade;
+    const hasCalendarDate    = !!item.calendar_date && !hasCascade && !hasVehicle && !hasPerson && !hasTask;
 
     const snoozeBtn = (item.urgent && item.snoozable && item.item_id) ? `
       <button class="snooze-btn" data-id="${item.item_id}" style="
@@ -1024,6 +1022,34 @@ export function createHome(world) {
       label.addEventListener('mouseleave', () => label.style.color = 'rgba(240,235,218,0.65)');
     });
 
+    // Health sub-domain — opens health detail cascade for that sub-domain
+    const openHealthSubDomain = (subDomain) => {
+      const intakeItem = {
+        id:    `health_detail_${subDomain}`,
+        title: subDomain === 'medical' ? 'Medical' : subDomain === 'physical' ? 'Physical' : 'Well-being',
+        body:  'Update your health picture',
+        cascade: {
+          type:    'health_intake',
+          context: { _editSubDomain: subDomain },
+        },
+      };
+      const cascadePanel = createCascade({
+        item:       intakeItem,
+        onBack:     () => {},
+        onComplete: () => {
+          syncHealthSignals();
+          closeBrief();
+        },
+      });
+      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
+    };
+
+    panel.querySelectorAll('.health-subdomain-label').forEach(label => {
+      label.addEventListener('click',      () => openHealthSubDomain(label.dataset.subDomain));
+      label.addEventListener('mouseenter', () => label.style.color = 'rgba(210,160,60,0.9)');
+      label.addEventListener('mouseleave', () => label.style.color = 'rgba(240,235,218,0.65)');
+    });
+
     // Task detail — opens when user taps a maintenance task row
     const openTaskDetail = (taskId) => {
       const tasks = store.get('maintenance_tasks') || [];
@@ -1088,6 +1114,32 @@ export function createHome(world) {
       if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
     };
 
+    // Health intake — opens when user taps "Set up health" CTA
+    const openHealthIntake = () => {
+      const intakeItem = {
+        id: 'health_intake_new',
+        title: 'Health',
+        body: "Your health picture, kept quietly in one place",
+        cascade: {
+          type: 'health_intake',
+          context: {},
+        },
+      };
+      const cascadePanel = createCascade({
+        item: intakeItem,
+        onBack: () => {},
+        onComplete: () => {
+          syncHealthSignals();
+          closeBrief();
+          setTimeout(() => {
+            const spot = HOTSPOT_MAPS[world?.id]?.find(h => h.domain === 'health');
+            if (spot) openBrief(spot);
+          }, 400);
+        },
+      });
+      if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
+    };
+
     // Vehicle intake — opens when user taps "Add a vehicle" CTA
     const openVehicleIntake = () => {
       const intakeItem = {
@@ -1137,6 +1189,8 @@ export function createHome(world) {
           openVehicleIntake();
         } else if (action === 'add_maintenance') {
           openMaintenanceIntake();
+        } else if (action === 'setup_health') {
+          openHealthIntake();
         } else {
           console.log(`CTA action: ${action}`);
         }

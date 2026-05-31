@@ -1,5 +1,14 @@
 import { store } from './store.js';
 import { api } from './api.js';
+import {
+  initHealthStore,
+  saveMedicalIntake,
+  savePhysicalIntake,
+  saveMentalIntake,
+  getApplicableScreenings,
+  computeProviderNextDue,
+  computeNextDue,
+} from './health.js';
 
 // ---------------------------------------------------------------------------
 // CASCADE MODULE
@@ -161,7 +170,7 @@ export function createCascade({ item, onBack, onComplete }) {
         </div>
 
         <!-- Change route — only shown on multi-route cascades, not on detail or intake views -->
-        ${hasRoute && cascade?.type !== 'vehicle_detail' && cascade?.type !== 'person_detail' && cascade?.type !== 'vehicle_intake' ? `
+        ${hasRoute && cascade?.type !== 'vehicle_detail' && cascade?.type !== 'person_detail' && cascade?.type !== 'vehicle_intake' && cascade?.type !== 'health_intake' ? `
           <div style="margin-top:36px;">
             <button id="cascade-change-route" style="
               font-family:var(--font-sans);font-weight:200;
@@ -410,6 +419,12 @@ export function createCascade({ item, onBack, onComplete }) {
     // Intake cascade — delegate to intake listener handler
     if (cascade.type === 'vehicle_intake') {
       attachIntakeListeners(el, cascade, render, close, onComplete);
+      return;
+    }
+
+    // Health intake cascade — delegate to health intake listener
+    if (cascade.type === 'health_intake') {
+      attachHealthIntakeListeners(el, cascade, render, close, onComplete);
       return;
     }
 
@@ -3578,6 +3593,1237 @@ function saveTaskField(taskId, field, value) {
 
 
 // ---------------------------------------------------------------------------
+// HEALTH INTAKE — Seven-step medical intake
+//
+// Step order (locked Session 22):
+//   0. disclaimer     — said once, up front, non-skippable
+//   1. primary_care   — have a provider? who, when last seen
+//   2. sex_at_birth   — framed off known pronoun
+//   3. providers      — dentist, eye care, specialists (tile-based)
+//   4. conditions     — curated tile set, skippable
+//   5. medications    — free text, skippable
+//   6. screenings     — age + sex appropriate tiles, skippable
+//   7. physical       — activity level + goals, skippable
+//   8. mental         — current state + provider, skippable
+//
+// On complete: writes to store.health via health.js helpers.
+// Health Intelligence Boundary (2.13): no clinical commentary anywhere.
+// ---------------------------------------------------------------------------
+
+const HEALTH_CONDITION_TILES = [
+  { id: 'hypertension',     label: 'High blood pressure' },
+  { id: 'diabetes_t1',      label: 'Type 1 diabetes' },
+  { id: 'diabetes_t2',      label: 'Type 2 diabetes' },
+  { id: 'heart_disease',    label: 'Heart disease' },
+  { id: 'asthma',           label: 'Asthma' },
+  { id: 'copd',             label: 'COPD' },
+  { id: 'arthritis',        label: 'Arthritis' },
+  { id: 'thyroid',          label: 'Thyroid condition' },
+  { id: 'mental_health_dx', label: 'Mental health condition' },
+  { id: 'cancer_history',   label: 'Cancer — history or current' },
+  { id: 'autoimmune',       label: 'Autoimmune condition' },
+  { id: 'chronic_pain',     label: 'Chronic pain' },
+  { id: 'kidney_disease',   label: 'Kidney disease' },
+  { id: 'neurological',     label: 'Neurological condition' },
+];
+
+const PROVIDER_TILES = [
+  { id: 'dentist',       label: 'Dentist',         type: 'dentist'    },
+  { id: 'eye_care',      label: 'Eye care',         type: 'eye_care'   },
+  { id: 'dermatologist', label: 'Dermatologist',    type: 'skin'       },
+  { id: 'specialist',    label: 'Specialist',       type: 'specialist' },
+  { id: 'physio',        label: 'Physiotherapist',  type: 'specialist' },
+  { id: 'chiro',         label: 'Chiropractor',     type: 'specialist' },
+];
+
+const PHYSICAL_ACTIVITY_TILES = [
+  { id: 'sedentary',   label: 'Mostly sitting'      },
+  { id: 'light',       label: 'Light — walks, easy movement' },
+  { id: 'moderate',    label: 'Moderate — a few times a week' },
+  { id: 'active',      label: 'Active — most days'  },
+  { id: 'very_active', label: 'Very active — daily, intense' },
+];
+
+const PHYSICAL_GOAL_TILES = [
+  { id: 'lose_weight',       label: 'Lose weight'       },
+  { id: 'build_strength',    label: 'Build strength'    },
+  { id: 'improve_cardio',    label: 'Cardio fitness'    },
+  { id: 'flexibility',       label: 'Flexibility'       },
+  { id: 'stress_relief',     label: 'Manage stress'     },
+  { id: 'general_health',    label: 'General health'    },
+  { id: 'sport_performance', label: 'Sport performance' },
+];
+
+const MENTAL_STATE_TILES = [
+  { id: 'doing_well',        label: 'Doing well'          },
+  { id: 'managing',          label: 'Managing'            },
+  { id: 'hard_season',       label: 'Hard season right now' },
+  { id: 'prefer_not_to_say', label: 'Prefer not to say'  },
+];
+
+function createHealthIntakeState() {
+  const user = store.get('user') || {};
+  return {
+    step: 'disclaimer',
+    // primary care
+    has_primary_care: null,      // true | false
+    pc_name: '',
+    pc_last_seen: '',
+    pc_next_due: '',
+    // sex assigned at birth
+    sex_confirmed: null,         // true (same as pronoun) | false
+    sex_at_birth: null,          // 'male' | 'female' | 'intersex' | 'prefer_not_to_say'
+    _user_pronoun: user.pronouns || null,
+    // providers — array of { tile_id, name, last_seen, next_due }
+    selected_providers: [],      // tile IDs chosen on the providers step
+    provider_details: {},        // { tile_id: { name, last_seen, next_due } }
+    _provider_detail_step: null, // which provider we're collecting details for
+    // conditions
+    selected_conditions: [],     // condition IDs
+    condition_custom: '',
+    // medications
+    medications_text: '',
+    // screenings — populated from getApplicableScreenings after sex/age known
+    applicable_screenings: [],
+    selected_screenings: {},     // { screening_id: { last_done: '' } }
+    // physical
+    activity_level: null,
+    selected_goals: [],
+    limitations_text: '',
+    // mental
+    mental_state: null,
+    has_mental_provider: null,
+    mental_provider_name: '',
+    mental_provider_type: null,
+    mental_last_seen: '',
+  };
+}
+
+const healthIntakeRenderer = {
+
+  async resolve(context, _preference) {
+    if (!context._hState) {
+      initHealthStore();
+      context._hState = createHealthIntakeState();
+      // If opened from a sub-domain tap, jump directly to that section
+      if (context._editSubDomain) {
+        const jumpMap = {
+          medical:  'primary_care',
+          physical: 'physical_activity',
+          mental:   'mental_state',
+        };
+        context._hState.step = jumpMap[context._editSubDomain] || 'primary_care';
+        // Pre-populate state from existing store data
+        _prePopulateHealthState(context._hState);
+      }
+      _refreshScreenings(context._hState);
+    }
+    return { routes: [], route: 'intake' };
+  },
+
+  async buildRoute(_route, context) {
+    const s = context._hState || createHealthIntakeState();
+    context._hState = s;
+    return buildHealthIntakeStep(s);
+  },
+
+  complete(context, _route, _update) {
+    const s = context._hState;
+    if (!s) return;
+
+    // ── Medical ───────────────────────────────────────────────────────────
+    const user     = store.get('user') || {};
+    const age      = user.dob ? _computeAgeFromDob(user.dob) : null;
+    const sex      = s.sex_at_birth || (s.sex_confirmed ? _pronounToSex(s._user_pronoun) : null);
+
+    // Build providers array
+    const providers = s.selected_providers.map(tileId => {
+      const tile         = PROVIDER_TILES.find(t => t.id === tileId) || {};
+      const details      = s.provider_details[tileId] || {};
+      const id           = `prov_${tileId}_${Date.now()}`;
+      const interval_days = details.interval_days || null;
+      const next_due = details.next_due ||
+        (details.last_seen
+          ? (interval_days
+              ? computeNextDue(details.last_seen, interval_days)
+              : computeProviderNextDue(tile.type, details.last_seen))
+          : null);
+      return {
+        id,
+        tile_id:      tileId,
+        type:         tile.type || 'specialist',
+        name:         details.name || tile.label,
+        last_seen:    details.last_seen || null,
+        interval_days,   // user-set — authoritative over type default when present
+        next_due,
+      };
+    });
+
+    // Build screenings array
+    const screenings = s.applicable_screenings.map(scr => {
+      const detail   = s.selected_screenings[scr.id] || {};
+      const last_done = detail.last_done || null;
+      const next_due  = last_done ? computeNextDue(last_done, scr.recurrence_days) : null;
+      return {
+        id:               scr.id,
+        label:            scr.label,
+        recurrence_days:  scr.recurrence_days,
+        last_done,
+        next_due,
+        skipped: false,
+      };
+    });
+
+    // Build conditions
+    const conditions = s.selected_conditions.map(id => ({
+      id,
+      label:  HEALTH_CONDITION_TILES.find(t => t.id === id)?.label || id,
+      custom: false,
+    }));
+    if (s.condition_custom.trim()) {
+      conditions.push({ id: `custom_${Date.now()}`, label: s.condition_custom.trim(), custom: true });
+    }
+
+    // Build medications
+    const medications = s.medications_text.trim()
+      ? s.medications_text.split('\n').map(l => l.trim()).filter(Boolean).map(name => ({ name }))
+      : [];
+
+    // Primary care next_due
+    const pc_next_due = s.pc_next_due ||
+      (s.pc_last_seen ? computeNextDue(s.pc_last_seen, 365) : null);
+
+    saveMedicalIntake({
+      sex_assigned_at_birth: sex,
+      primary_care: {
+        has_provider: s.has_primary_care,
+        name:         s.pc_name || null,
+        last_seen:    s.pc_last_seen || null,
+        next_due:     pc_next_due,
+      },
+      providers,
+      conditions,
+      medications,
+      screenings,
+    });
+
+    // ── Physical ──────────────────────────────────────────────────────────
+    if (s.activity_level || s.selected_goals.length) {
+      const limitations = s.limitations_text.trim()
+        ? s.limitations_text.split('\n').map(l => l.trim()).filter(Boolean)
+        : [];
+      savePhysicalIntake({
+        activity_level: s.activity_level,
+        goals:          s.selected_goals,
+        limitations,
+        workout_note:   null,
+      });
+    }
+
+    // ── Mental ────────────────────────────────────────────────────────────
+    if (s.mental_state) {
+      saveMentalIntake({
+        current_state:  s.mental_state,
+        has_provider:   s.has_mental_provider,
+        provider_name:  s.mental_provider_name || null,
+        provider_type:  s.mental_provider_type || null,
+        last_seen:      s.mental_last_seen || null,
+      });
+    }
+
+    // Mark disclaimer as seen
+    const health = store.get('health') || {};
+    store.set('health', { ...health, disclaimer_seen: true });
+
+    logCascadeComplete('health_intake', 'health', 'complete');
+  },
+};
+
+// Refresh applicable_screenings on the state object.
+// Called after sex_at_birth is confirmed.
+function _refreshScreenings(s) {
+  const user = store.get('user') || {};
+  const age  = user.dob ? _computeAgeFromDob(user.dob) : null;
+  const sex  = s.sex_at_birth || (s.sex_confirmed ? _pronounToSex(s._user_pronoun) : null);
+  s.applicable_screenings = getApplicableScreenings(age, sex);
+}
+
+function _pronounToSex(pronoun) {
+  if (pronoun === 'he')  return 'male';
+  if (pronoun === 'she') return 'female';
+  return null;
+}
+
+function _computeAgeFromDob(dob) {
+  try {
+    const d = new Date(dob);
+    const today = new Date();
+    let age = today.getFullYear() - d.getFullYear();
+    const m = today.getMonth() - d.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
+    return age;
+  } catch { return null; }
+}
+
+// Master step router
+function buildHealthIntakeStep(s) {
+  switch (s.step) {
+    case 'disclaimer':        return buildHDisclaimerStep(s);
+    case 'primary_care':      return buildHPrimaryCareStep(s);
+    case 'sex_at_birth':      return buildHSexStep(s);
+    case 'providers':         return buildHProvidersStep(s);
+    case 'provider_detail':   return buildHProviderDetailStep(s);
+    case 'conditions':        return buildHConditionsStep(s);
+    case 'medications':       return buildHMedicationsStep(s);
+    case 'screenings':        return buildHScreeningsStep(s);
+    case 'physical_activity': return buildHPhysicalActivityStep(s);
+    case 'physical_goals':    return buildHPhysicalGoalsStep(s);
+    case 'mental_state':      return buildHMentalStateStep(s);
+    case 'mental_provider':   return buildHMentalProviderStep(s);
+    case 'complete':          return buildHCompleteStep(s);
+    default:                  return buildHDisclaimerStep(s);
+  }
+}
+
+// Step index for progress bar — 9 visible steps (disclaimer is 0)
+const H_STEP_ORDER = [
+  'disclaimer', 'primary_care', 'sex_at_birth', 'providers',
+  'conditions', 'medications', 'screenings',
+  'physical_activity', 'physical_goals', 'mental_state', 'complete',
+];
+function hStepNum(step) {
+  const idx = H_STEP_ORDER.indexOf(step);
+  return idx >= 0 ? idx : 0;
+}
+
+// Shared health step wrapper — progress bar + content
+function buildHStepWrapper(step, content, { skipLabel } = {}) {
+  const total = H_STEP_ORDER.length - 1; // exclude 'complete'
+  const num   = hStepNum(step);
+  const pct   = Math.round((num / total) * 100);
+
+  return `
+    <div>
+      <div style="
+        height:1px;background:rgba(240,235,218,0.06);
+        margin-bottom:28px;position:relative;
+      ">
+        <div style="
+          position:absolute;top:0;left:0;height:100%;
+          width:${pct}%;
+          background:rgba(210,160,60,0.5);
+          transition:width 0.3s ease;
+        "></div>
+      </div>
+
+      ${content}
+
+      ${skipLabel ? buildHSkipLink(skipLabel) : ''}
+    </div>
+  `;
+}
+
+function buildHProceedButton(label = 'Continue') {
+  return `
+    <button id="intake-proceed" style="
+      margin-top:8px;
+      display:inline-flex;align-items:center;
+      padding:14px 28px;
+      background:rgba(240,235,218,0.08);
+      border:0.5px solid rgba(240,235,218,0.3);
+      border-radius:2px;
+      font-family:var(--font-sans);font-weight:300;
+      font-size:11px;letter-spacing:0.22em;text-transform:uppercase;
+      color:rgba(240,235,218,0.85);
+      cursor:pointer;
+    "
+    onmouseenter="this.style.background='rgba(240,235,218,0.13)'"
+    onmouseleave="this.style.background='rgba(240,235,218,0.08)'"
+    >${label}</button>
+  `;
+}
+
+function buildHSkipLink(label = 'Skip for now') {
+  return `
+    <button id="intake-skip" style="
+      margin-top:16px;margin-left:16px;
+      font-family:var(--font-sans);font-weight:200;
+      font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+      color:rgba(240,235,218,0.2);
+      cursor:pointer;
+      background:none;border:none;padding:0;
+    "
+    onmouseenter="this.style.color='rgba(240,235,218,0.45)'"
+    onmouseleave="this.style.color='rgba(240,235,218,0.2)'"
+    >${label}</button>
+  `;
+}
+
+function buildHLabel(text) {
+  return `
+    <div style="
+      font-family:var(--font-sans);font-weight:200;
+      font-size:12px;letter-spacing:0.06em;
+      color:rgba(240,235,218,0.4);
+      margin-bottom:24px;line-height:1.6;
+    ">${text}</div>
+  `;
+}
+
+function buildHTileSet(tiles, selectedIds, dataAttr = 'tile-id', multiSelect = true) {
+  return `
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;">
+      ${tiles.map(t => {
+        const selected = selectedIds.includes(t.id);
+        return `
+          <button
+            data-${dataAttr}="${t.id}"
+            class="h-tile"
+            style="
+              padding:10px 16px;
+              background:${selected ? 'rgba(210,160,60,0.18)' : 'rgba(240,235,218,0.04)'};
+              border:0.5px solid ${selected ? 'rgba(210,160,60,0.5)' : 'rgba(240,235,218,0.12)'};
+              border-radius:2px;
+              font-family:var(--font-sans);font-weight:${selected ? '300' : '200'};
+              font-size:12px;letter-spacing:0.04em;
+              color:${selected ? 'rgba(240,235,218,0.9)' : 'rgba(240,235,218,0.5)'};
+              cursor:pointer;
+            "
+          >${t.label}</button>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function buildHTextInput(id, label, placeholder, value = '', opts = {}) {
+  return `
+    <div style="margin-bottom:20px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.3);margin-bottom:8px;
+      ">${label}${opts.optional ? ' <span style="color:rgba(240,235,218,0.15);">— optional</span>' : ''}</div>
+      <input
+        id="${id}"
+        type="text"
+        placeholder="${placeholder}"
+        value="${value}"
+        style="
+          width:100%;box-sizing:border-box;
+          background:rgba(240,235,218,0.04);
+          border:0.5px solid rgba(240,235,218,0.12);
+          border-radius:2px;
+          padding:14px 16px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:15px;letter-spacing:0.02em;
+          color:rgba(240,235,218,0.88);
+          outline:none;-webkit-appearance:none;
+        "
+        onfocus="this.style.borderColor='rgba(240,235,218,0.3)'"
+        onblur="this.style.borderColor='rgba(240,235,218,0.12)'"
+      />
+    </div>
+  `;
+}
+
+// ── Step builders ──────────────────────────────────────────────────────────
+
+// Step 0 — Disclaimer
+function buildHDisclaimerStep(s) {
+  return `
+    <div>
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.25);margin-bottom:20px;
+      ">Before we begin</div>
+
+      <div style="
+        font-family:var(--font-serif);font-style:italic;font-weight:300;
+        font-size:16px;line-height:1.7;
+        color:rgba(240,235,218,0.7);
+        margin-bottom:28px;
+      ">This isn't medical advice.</div>
+
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:13px;line-height:1.8;letter-spacing:0.02em;
+        color:rgba(240,235,218,0.45);
+        margin-bottom:32px;
+      ">
+        It's a place to keep your health picture organised — your providers, your appointments,
+        what's coming due. The information it surfaces is broadly accepted general guidance,
+        not a substitute for a conversation with your doctor.
+      </div>
+
+      ${buildHProceedButton('Understood — continue')}
+    </div>
+  `;
+}
+
+// Step 1 — Primary care provider
+function buildHPrimaryCareStep(s) {
+  const content = `
+    ${buildHLabel('Do you have a family doctor or primary care provider?')}
+
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;">
+      ${['Yes', 'No'].map(opt => {
+        const val      = opt === 'Yes';
+        const selected = s.has_primary_care === val;
+        return `
+          <button data-pc-has="${val}" class="h-tile" style="
+            padding:10px 16px;
+            background:${selected ? 'rgba(210,160,60,0.18)' : 'rgba(240,235,218,0.04)'};
+            border:0.5px solid ${selected ? 'rgba(210,160,60,0.5)' : 'rgba(240,235,218,0.12)'};
+            border-radius:2px;
+            font-family:var(--font-sans);font-weight:${selected ? '300' : '200'};
+            font-size:12px;letter-spacing:0.04em;
+            color:${selected ? 'rgba(240,235,218,0.9)' : 'rgba(240,235,218,0.5)'};
+            cursor:pointer;
+          ">${opt}</button>
+        `;
+      }).join('')}
+    </div>
+
+    ${s.has_primary_care === true ? `
+      ${buildHTextInput('h-pc-name', 'Provider name', 'Dr. Smith', s.pc_name, { optional: true })}
+
+      <div style="margin-bottom:20px;">
+        <div style="
+          font-family:var(--font-sans);font-weight:200;
+          font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+          color:rgba(240,235,218,0.3);margin-bottom:8px;
+        ">Last visit <span style="color:rgba(240,235,218,0.15);">— optional</span></div>
+        ${buildDateField('h-pc-last-seen', 'Last visit', s.pc_last_seen || '')}
+      </div>
+    ` : ''}
+
+    ${s.has_primary_care !== null ? `
+      <div style="display:flex;align-items:center;margin-top:8px;">
+        ${buildHProceedButton('Continue')}
+      </div>
+    ` : ''}
+  `;
+  return buildHStepWrapper('primary_care', content);
+}
+
+// Step 2 — Sex assigned at birth
+function buildHSexStep(s) {
+  const pronoun   = s._user_pronoun;
+  const pronounLabel = pronoun === 'he' ? 'he/him' : pronoun === 'she' ? 'she/her' : 'they/them';
+
+  const content = `
+    ${buildHLabel(`Some health recommendations are based on sex assigned at birth. You've told us you go by ${pronounLabel} — is that also your sex assigned at birth?`)}
+
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;">
+      ${[{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'No — it\'s different' }].map(opt => {
+        const selected = opt.id === 'yes' ? s.sex_confirmed === true : s.sex_confirmed === false;
+        return `
+          <button data-sex-confirm="${opt.id}" class="h-tile" style="
+            padding:10px 16px;
+            background:${selected ? 'rgba(210,160,60,0.18)' : 'rgba(240,235,218,0.04)'};
+            border:0.5px solid ${selected ? 'rgba(210,160,60,0.5)' : 'rgba(240,235,218,0.12)'};
+            border-radius:2px;
+            font-family:var(--font-sans);font-weight:${selected ? '300' : '200'};
+            font-size:12px;letter-spacing:0.04em;
+            color:${selected ? 'rgba(240,235,218,0.9)' : 'rgba(240,235,218,0.5)'};
+            cursor:pointer;
+          ">${opt.label}</button>
+        `;
+      }).join('')}
+    </div>
+
+    ${s.sex_confirmed === false ? `
+      ${buildHTileSet(
+        [
+          { id: 'male',               label: 'Male'            },
+          { id: 'female',             label: 'Female'          },
+          { id: 'intersex',           label: 'Intersex'        },
+          { id: 'prefer_not_to_say',  label: 'Prefer not to say' },
+        ],
+        s.sex_at_birth ? [s.sex_at_birth] : [],
+        'sex-birth',
+        false
+      )}
+    ` : ''}
+
+    ${s.sex_confirmed !== null ? `
+      <div style="display:flex;align-items:center;margin-top:8px;">
+        ${buildHProceedButton('Continue')}
+        ${buildHSkipLink('Skip this')}
+      </div>
+    ` : ''}
+  `;
+  return buildHStepWrapper('sex_at_birth', content, { skipLabel: null });
+}
+
+// Step 3 — Providers (dentist, eye care, specialists)
+function buildHProvidersStep(s) {
+  const content = `
+    ${buildHLabel('Any other providers we should know about? Select what applies.')}
+
+    ${buildHTileSet(PROVIDER_TILES, s.selected_providers, 'provider-tile')}
+
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${buildHProceedButton(s.selected_providers.length ? 'Add details' : 'Continue')}
+      ${buildHSkipLink('Skip for now')}
+    </div>
+  `;
+  return buildHStepWrapper('providers', content, {});
+}
+
+// Step 3b — Provider detail (shown once per selected provider)
+function buildHProviderDetailStep(s) {
+  const tileId  = s._provider_detail_step;
+  const tile    = PROVIDER_TILES.find(t => t.id === tileId) || {};
+  const details = s.provider_details[tileId] || {};
+  const idx     = s.selected_providers.indexOf(tileId);
+  const total   = s.selected_providers.length;
+
+  const INTERVAL_TILES = [
+    { label: '3 months',  days: 90  },
+    { label: '6 months',  days: 180 },
+    { label: 'Annual',    days: 365 },
+    { label: '2 years',   days: 730 },
+  ];
+
+  const selectedDays = details.interval_days || null;
+
+  const content = `
+    <div style="
+      font-family:var(--font-sans);font-weight:200;
+      font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+      color:rgba(240,235,218,0.25);margin-bottom:8px;
+    ">${idx + 1} of ${total}</div>
+
+    ${buildHLabel(tile.label)}
+
+    ${buildHTextInput('h-prov-name', 'Provider name', `e.g. Dr. Jones`, details.name || '', { optional: true })}
+
+    <div style="margin-bottom:20px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.3);margin-bottom:8px;
+      ">Last visit <span style="color:rgba(240,235,218,0.15);">— optional</span></div>
+      ${buildDateField('h-prov-last-seen', 'Last visit', details.last_seen || '')}
+    </div>
+
+    <div style="margin-bottom:20px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.3);margin-bottom:10px;
+      ">How often do you go? <span style="color:rgba(240,235,218,0.15);">— optional</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${INTERVAL_TILES.map(t => {
+          const selected = selectedDays === t.days;
+          return `
+            <button data-prov-interval="${t.days}" style="
+              padding:8px 14px;
+              background:${selected ? 'rgba(210,160,60,0.18)' : 'rgba(240,235,218,0.04)'};
+              border:0.5px solid ${selected ? 'rgba(210,160,60,0.5)' : 'rgba(240,235,218,0.12)'};
+              border-radius:2px;
+              font-family:var(--font-sans);font-weight:${selected ? '300' : '200'};
+              font-size:12px;letter-spacing:0.04em;
+              color:${selected ? 'rgba(240,235,218,0.9)' : 'rgba(240,235,218,0.5)'};
+              cursor:pointer;
+            ">${t.label}</button>
+          `;
+        }).join('')}
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${buildHProceedButton(idx < total - 1 ? 'Next provider' : 'Continue')}
+      ${buildHSkipLink('Skip this provider')}
+    </div>
+  `;
+  return buildHStepWrapper('providers', content, {});
+}
+
+// Step 4 — Chronic conditions
+function buildHConditionsStep(s) {
+  const content = `
+    ${buildHLabel('Any ongoing conditions we should be aware of? Select what applies.')}
+
+    ${buildHTileSet(HEALTH_CONDITION_TILES, s.selected_conditions, 'condition-tile')}
+
+    ${buildHTextInput('h-condition-custom', 'Something else', 'Enter condition', s.condition_custom, { optional: true })}
+
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${buildHProceedButton('Continue')}
+      ${buildHSkipLink('Skip for now')}
+    </div>
+  `;
+  return buildHStepWrapper('conditions', content, {});
+}
+
+// Step 5 — Medications
+function buildHMedicationsStep(s) {
+  const content = `
+    ${buildHLabel('Any medications currently on file?')}
+
+    <div style="margin-bottom:20px;">
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+        color:rgba(240,235,218,0.3);margin-bottom:8px;
+      ">Medications <span style="color:rgba(240,235,218,0.15);">— optional, one per line</span></div>
+      <textarea
+        id="h-medications"
+        placeholder="e.g. Metformin&#10;Lisinopril"
+        style="
+          width:100%;box-sizing:border-box;
+          background:rgba(240,235,218,0.04);
+          border:0.5px solid rgba(240,235,218,0.12);
+          border-radius:2px;
+          padding:14px 16px;
+          font-family:var(--font-sans);font-weight:300;
+          font-size:15px;letter-spacing:0.02em;
+          color:rgba(240,235,218,0.88);
+          outline:none;-webkit-appearance:none;
+          resize:vertical;min-height:100px;
+        "
+        onfocus="this.style.borderColor='rgba(240,235,218,0.3)'"
+        onblur="this.style.borderColor='rgba(240,235,218,0.12)'"
+      >${s.medications_text}</textarea>
+    </div>
+
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${buildHProceedButton('Continue')}
+      ${buildHSkipLink('Skip for now')}
+    </div>
+  `;
+  return buildHStepWrapper('medications', content, {});
+}
+
+// Step 6 — Screenings
+function buildHScreeningsStep(s) {
+  const screenings = s.applicable_screenings;
+
+  if (!screenings.length) {
+    // No applicable screenings — auto-advance handled in listener
+    return buildHStepWrapper('screenings', `
+      ${buildHLabel('No screenings applicable based on your profile.')}
+      <div style="display:flex;align-items:center;margin-top:8px;">
+        ${buildHProceedButton('Continue')}
+      </div>
+    `);
+  }
+
+  const content = `
+    ${buildHLabel('Any of these screenings on file? Select the ones you\'ve had and add a date if you know it.')}
+
+    <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:24px;">
+      ${screenings.map(scr => {
+        const detail   = s.selected_screenings[scr.id] || null;
+        const selected = !!detail;
+        return `
+          <div style="
+            background:${selected ? 'rgba(210,160,60,0.06)' : 'rgba(240,235,218,0.02)'};
+            border:0.5px solid ${selected ? 'rgba(210,160,60,0.3)' : 'rgba(240,235,218,0.08)'};
+            border-radius:2px;padding:14px 16px;
+          ">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:${selected ? '12px' : '0'};">
+              <span style="
+                font-family:var(--font-sans);font-weight:200;
+                font-size:13px;letter-spacing:0.02em;
+                color:${selected ? 'rgba(240,235,218,0.88)' : 'rgba(240,235,218,0.5)'};
+              ">${scr.label}</span>
+              <button data-screening-toggle="${scr.id}" style="
+                padding:6px 12px;
+                background:${selected ? 'rgba(210,160,60,0.15)' : 'rgba(240,235,218,0.04)'};
+                border:0.5px solid ${selected ? 'rgba(210,160,60,0.4)' : 'rgba(240,235,218,0.12)'};
+                border-radius:2px;
+                font-family:var(--font-sans);font-weight:200;
+                font-size:10px;letter-spacing:0.15em;text-transform:uppercase;
+                color:${selected ? 'rgba(210,160,60,0.9)' : 'rgba(240,235,218,0.35)'};
+                cursor:pointer;
+              ">${selected ? 'On file' : 'Add'}</button>
+            </div>
+            ${selected ? `
+              <div>
+                <div style="
+                  font-family:var(--font-sans);font-weight:200;
+                  font-size:10px;letter-spacing:0.15em;text-transform:uppercase;
+                  color:rgba(240,235,218,0.25);margin-bottom:6px;
+                ">Last done <span style="color:rgba(240,235,218,0.12);">— optional</span></div>
+                ${buildDateField(`h-scr-${scr.id}`, 'Last done', detail.last_done || '')}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('')}
+    </div>
+
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${buildHProceedButton('Continue')}
+      ${buildHSkipLink('Skip for now')}
+    </div>
+  `;
+  return buildHStepWrapper('screenings', content, {});
+}
+
+// Step 7 — Physical activity level
+function buildHPhysicalActivityStep(s) {
+  const content = `
+    ${buildHLabel('How would you describe your current activity level?')}
+
+    ${buildHTileSet(PHYSICAL_ACTIVITY_TILES, s.activity_level ? [s.activity_level] : [], 'activity-tile', false)}
+
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${s.activity_level ? buildHProceedButton('Continue') : ''}
+      ${buildHSkipLink('Skip for now')}
+    </div>
+  `;
+  return buildHStepWrapper('physical_activity', content, {});
+}
+
+// Step 8 — Physical goals
+function buildHPhysicalGoalsStep(s) {
+  const content = `
+    ${buildHLabel('Any goals on the physical side? Select what applies.')}
+
+    ${buildHTileSet(PHYSICAL_GOAL_TILES, s.selected_goals, 'goal-tile')}
+
+    ${buildHTextInput('h-limitations', 'Any limitations or injuries?', 'e.g. bad knee, shoulder surgery', s.limitations_text, { optional: true })}
+
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${buildHProceedButton('Continue')}
+      ${buildHSkipLink('Skip for now')}
+    </div>
+  `;
+  return buildHStepWrapper('physical_goals', content, {});
+}
+
+// Step 9 — Mental state
+function buildHMentalStateStep(s) {
+  const content = `
+    ${buildHLabel('How are you doing these days?')}
+
+    ${buildHTileSet(MENTAL_STATE_TILES, s.mental_state ? [s.mental_state] : [], 'mental-tile', false)}
+
+    <div style="display:flex;align-items:center;margin-top:8px;">
+      ${s.mental_state ? buildHProceedButton('Continue') : ''}
+      ${buildHSkipLink('Skip for now')}
+    </div>
+  `;
+  return buildHStepWrapper('mental_state', content, {});
+}
+
+// Step 10 — Mental provider (shown only if mental_state is set and not prefer_not_to_say)
+function buildHMentalProviderStep(s) {
+  const content = `
+    ${buildHLabel('Do you see anyone for your mental well-being — a therapist, counsellor, or psychiatrist?')}
+
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;">
+      ${[{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'No' }].map(opt => {
+        const val      = opt.id === 'yes';
+        const selected = s.has_mental_provider === val;
+        return `
+          <button data-mental-has="${opt.id}" class="h-tile" style="
+            padding:10px 16px;
+            background:${selected ? 'rgba(210,160,60,0.18)' : 'rgba(240,235,218,0.04)'};
+            border:0.5px solid ${selected ? 'rgba(210,160,60,0.5)' : 'rgba(240,235,218,0.12)'};
+            border-radius:2px;
+            font-family:var(--font-sans);font-weight:${selected ? '300' : '200'};
+            font-size:12px;letter-spacing:0.04em;
+            color:${selected ? 'rgba(240,235,218,0.9)' : 'rgba(240,235,218,0.5)'};
+            cursor:pointer;
+          ">${opt.label}</button>
+        `;
+      }).join('')}
+    </div>
+
+    ${s.has_mental_provider === true ? `
+      ${buildHTextInput('h-mental-name', 'Provider name', 'e.g. Dr. Chen', s.mental_provider_name, { optional: true })}
+
+      <div style="margin-bottom:20px;">
+        <div style="
+          font-family:var(--font-sans);font-weight:200;
+          font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+          color:rgba(240,235,218,0.3);margin-bottom:8px;
+        ">Last visit <span style="color:rgba(240,235,218,0.15);">— optional</span></div>
+        ${buildDateField('h-mental-last-seen', 'Last visit', s.mental_last_seen || '')}
+      </div>
+    ` : ''}
+
+    ${s.has_mental_provider !== null ? `
+      <div style="display:flex;align-items:center;margin-top:8px;">
+        ${buildHProceedButton('Done')}
+      </div>
+    ` : ''}
+  `;
+  return buildHStepWrapper('mental_state', content, {});
+}
+
+// Step 11 — Complete
+function buildHCompleteStep(s) {
+  return `
+    <div style="padding:8px 0;">
+      <div style="
+        font-family:var(--font-serif);font-style:italic;font-weight:300;
+        font-size:17px;line-height:1.7;
+        color:rgba(240,235,218,0.7);
+        margin-bottom:16px;
+      ">Health picture on file.</div>
+      <div style="
+        font-family:var(--font-sans);font-weight:200;
+        font-size:12px;letter-spacing:0.04em;line-height:1.8;
+        color:rgba(240,235,218,0.35);
+        margin-bottom:32px;
+      ">I'll surface what needs attention and stay quiet when everything's clear.</div>
+      <button class="cascade-done" style="
+        display:inline-flex;align-items:center;
+        padding:14px 28px;
+        background:rgba(240,235,218,0.08);
+        border:0.5px solid rgba(240,235,218,0.3);
+        border-radius:2px;
+        font-family:var(--font-sans);font-weight:300;
+        font-size:11px;letter-spacing:0.22em;text-transform:uppercase;
+        color:rgba(240,235,218,0.85);
+        cursor:pointer;
+      "
+      onmouseenter="this.style.background='rgba(240,235,218,0.13)'"
+      onmouseleave="this.style.background='rgba(240,235,218,0.08)'"
+      >Done</button>
+    </div>
+  `;
+}
+
+// Health intake listener — attached by attachShellListeners
+export function attachHealthIntakeListeners(el, cascade, render, close, onComplete) {
+  const s = cascade.context._hState;
+  if (!s) return;
+
+  // Wire calendar pickers
+  attachCalendarListeners(el);
+
+  // ── Disclaimer ── proceed
+  if (s.step === 'disclaimer') {
+    el.querySelector('#intake-proceed')?.addEventListener('click', () => {
+      s.step = 'primary_care';
+      render('intake');
+    });
+    return;
+  }
+
+  // ── Skip ── advance to next major step
+  el.querySelector('#intake-skip')?.addEventListener('click', () => {
+    _hAdvanceStep(s);
+    render('intake');
+  });
+
+  // ── Primary care ──
+  el.querySelectorAll('[data-pc-has]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      s.has_primary_care = btn.dataset.pcHas === 'true';
+      render('intake');
+    });
+  });
+  if (s.step === 'primary_care') {
+    el.querySelector('#intake-proceed')?.addEventListener('click', () => {
+      s.pc_name      = el.querySelector('#h-pc-name')?.value.trim()       || s.pc_name;
+      s.pc_last_seen = el.querySelector('#h-pc-last-seen')?.value      || s.pc_last_seen;
+      s.step = 'sex_at_birth';
+      render('intake');
+    });
+    return;
+  }
+
+  // ── Sex at birth ──
+  el.querySelectorAll('[data-sex-confirm]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const val = btn.dataset.sexConfirm === 'yes';
+      s.sex_confirmed = val;
+      if (val) {
+        s.sex_at_birth = _pronounToSex(s._user_pronoun);
+        _refreshScreenings(s);
+      } else {
+        s.sex_at_birth = null;
+      }
+      render('intake');
+    });
+  });
+  el.querySelectorAll('[data-sex-birth]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      s.sex_at_birth = btn.dataset.sexBirth;
+      _refreshScreenings(s);
+      render('intake');
+    });
+  });
+  if (s.step === 'sex_at_birth') {
+    el.querySelector('#intake-proceed')?.addEventListener('click', () => {
+      s.step = 'providers';
+      render('intake');
+    });
+    return;
+  }
+
+  // ── Providers — tile selection ──
+  el.querySelectorAll('[data-provider-tile]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id  = btn.dataset.providerTile;
+      const idx = s.selected_providers.indexOf(id);
+      if (idx >= 0) {
+        s.selected_providers.splice(idx, 1);
+        delete s.provider_details[id];
+      } else {
+        s.selected_providers.push(id);
+      }
+      render('intake');
+    });
+  });
+  if (s.step === 'providers') {
+    el.querySelector('#intake-proceed')?.addEventListener('click', () => {
+      if (s.selected_providers.length) {
+        s._provider_detail_step = s.selected_providers[0];
+        s.step = 'provider_detail';
+      } else {
+        s.step = 'conditions';
+      }
+      render('intake');
+    });
+    return;
+  }
+
+  // ── Provider detail ──
+  if (s.step === 'provider_detail') {
+    // Interval tile toggles
+    el.querySelectorAll('[data-prov-interval]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tileId = s._provider_detail_step;
+        if (!s.provider_details[tileId]) s.provider_details[tileId] = {};
+        const days = parseInt(btn.dataset.provInterval, 10);
+        // Toggle off if already selected
+        s.provider_details[tileId].interval_days =
+          s.provider_details[tileId].interval_days === days ? null : days;
+        render('intake');
+      });
+    });
+
+    el.querySelector('#intake-proceed')?.addEventListener('click', () => {
+      const tileId = s._provider_detail_step;
+      if (!s.provider_details[tileId]) s.provider_details[tileId] = {};
+      s.provider_details[tileId].name      = el.querySelector('#h-prov-name')?.value.trim()   || '';
+      s.provider_details[tileId].last_seen = el.querySelector('#h-prov-last-seen')?.value     || '';
+      // interval_days already written by tile click — preserve if set
+      // Advance to next provider or to conditions
+      const idx  = s.selected_providers.indexOf(tileId);
+      const next = s.selected_providers[idx + 1];
+      if (next) {
+        s._provider_detail_step = next;
+        s.step = 'provider_detail';
+      } else {
+        s._provider_detail_step = null;
+        s.step = 'conditions';
+      }
+      render('intake');
+    });
+    return;
+  }
+
+  // ── Conditions ──
+  el.querySelectorAll('[data-condition-tile]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id  = btn.dataset.conditionTile;
+      const idx = s.selected_conditions.indexOf(id);
+      if (idx >= 0) s.selected_conditions.splice(idx, 1);
+      else           s.selected_conditions.push(id);
+      render('intake');
+    });
+  });
+  if (s.step === 'conditions') {
+    el.querySelector('#intake-proceed')?.addEventListener('click', () => {
+      s.condition_custom = el.querySelector('#h-condition-custom')?.value.trim() || '';
+      s.step = 'medications';
+      render('intake');
+    });
+    return;
+  }
+
+  // ── Medications ──
+  if (s.step === 'medications') {
+    el.querySelector('#intake-proceed')?.addEventListener('click', () => {
+      s.medications_text = el.querySelector('#h-medications')?.value || '';
+      s.step = 'screenings';
+      render('intake');
+    });
+    return;
+  }
+
+  // ── Screenings ──
+  el.querySelectorAll('[data-screening-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.screeningToggle;
+      if (s.selected_screenings[id]) {
+        delete s.selected_screenings[id];
+      } else {
+        s.selected_screenings[id] = { last_done: '' };
+      }
+      render('intake');
+    });
+  });
+  if (s.step === 'screenings') {
+    // Capture screening dates before proceeding
+    el.querySelector('#intake-proceed')?.addEventListener('click', () => {
+      Object.keys(s.selected_screenings).forEach(id => {
+        const val = el.querySelector(`#h-scr-${id}`)?.value;
+        if (val) s.selected_screenings[id].last_done = val;
+      });
+      s.step = 'physical_activity';
+      render('intake');
+    });
+    return;
+  }
+
+  // ── Physical activity ──
+  el.querySelectorAll('[data-activity-tile]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      s.activity_level = btn.dataset.activityTile;
+      render('intake');
+    });
+  });
+  if (s.step === 'physical_activity') {
+    el.querySelector('#intake-proceed')?.addEventListener('click', () => {
+      s.step = 'physical_goals';
+      render('intake');
+    });
+    return;
+  }
+
+  // ── Physical goals ──
+  el.querySelectorAll('[data-goal-tile]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id  = btn.dataset.goalTile;
+      const idx = s.selected_goals.indexOf(id);
+      if (idx >= 0) s.selected_goals.splice(idx, 1);
+      else           s.selected_goals.push(id);
+      render('intake');
+    });
+  });
+  if (s.step === 'physical_goals') {
+    el.querySelector('#intake-proceed')?.addEventListener('click', () => {
+      s.limitations_text = el.querySelector('#h-limitations')?.value.trim() || '';
+      s.step = 'mental_state';
+      render('intake');
+    });
+    return;
+  }
+
+  // ── Mental state ──
+  el.querySelectorAll('[data-mental-tile]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      s.mental_state = btn.dataset.mentalTile;
+      render('intake');
+    });
+  });
+  if (s.step === 'mental_state') {
+    el.querySelector('#intake-proceed')?.addEventListener('click', () => {
+      if (s.mental_state && s.mental_state !== 'prefer_not_to_say') {
+        s.step = 'mental_provider';
+      } else {
+        s.step = 'complete';
+      }
+      render('intake');
+    });
+    return;
+  }
+
+  // ── Mental provider ──
+  el.querySelectorAll('[data-mental-has]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      s.has_mental_provider = btn.dataset.mentalHas === 'yes';
+      render('intake');
+    });
+  });
+  if (s.step === 'mental_provider') {
+    el.querySelector('#intake-proceed')?.addEventListener('click', () => {
+      s.mental_provider_name = el.querySelector('#h-mental-name')?.value.trim()    || '';
+      s.mental_last_seen     = el.querySelector('#h-mental-last-seen')?.value  || '';
+      s.step = 'complete';
+      render('intake');
+    });
+    return;
+  }
+
+  // ── Complete — done button ──
+  el.querySelector('.cascade-done')?.addEventListener('click', () => {
+    healthIntakeRenderer.complete(cascade.context, 'intake', {});
+    close();
+    onComplete?.();
+  });
+}
+
+// Advance to the next step — used by skip buttons
+function _hAdvanceStep(s) {
+  const majorSteps = [
+    'primary_care', 'sex_at_birth', 'providers',
+    'conditions', 'medications', 'screenings',
+    'physical_activity', 'physical_goals', 'mental_state', 'complete',
+  ];
+  const idx  = majorSteps.indexOf(s.step);
+  const next = majorSteps[idx + 1] || 'complete';
+  s._provider_detail_step = null;
+  s.step = next;
+}
+
+// Pre-populate intake state from existing store.health data.
+// Called when opening a sub-domain edit so fields start pre-filled.
+function _prePopulateHealthState(s) {
+  const health   = store.get('health') || {};
+  const medical  = health.medical  || {};
+  const physical = health.physical || {};
+  const mental   = health.mental   || {};
+
+  // Medical
+  const pc = medical.primary_care || {};
+  s.has_primary_care = pc.has_provider ?? null;
+  s.pc_name          = pc.name      || '';
+  s.pc_last_seen     = pc.last_seen || '';
+  s.pc_next_due      = pc.next_due  || '';
+
+  s.sex_at_birth  = medical.sex_assigned_at_birth || null;
+  s.sex_confirmed = s.sex_at_birth
+    ? (s.sex_at_birth === _pronounToSex(s._user_pronoun) ? true : false)
+    : null;
+
+  s.selected_providers = (medical.providers || []).map(p => p.tile_id).filter(Boolean);
+  s.provider_details   = {};
+  (medical.providers || []).forEach(p => {
+    if (p.tile_id) s.provider_details[p.tile_id] = {
+      name:          p.name      || '',
+      last_seen:     p.last_seen || '',
+      interval_days: p.interval_days || null,
+    };
+  });
+
+  s.selected_conditions = (medical.conditions || []).filter(c => !c.custom).map(c => c.id);
+  s.condition_custom    = (medical.conditions || []).filter(c => c.custom).map(c => c.label).join(', ');
+
+  s.medications_text = (medical.medications || []).map(m => m.name).join('\n');
+
+  s.applicable_screenings = (medical.screenings || []);
+  s.selected_screenings   = {};
+  (medical.screenings || []).filter(sc => !sc.skipped && sc.last_done).forEach(sc => {
+    s.selected_screenings[sc.id] = { last_done: sc.last_done };
+  });
+
+  // Physical
+  s.activity_level  = physical.activity_level || null;
+  s.selected_goals  = physical.goals          || [];
+  s.limitations_text = (physical.limitations || []).join('\n');
+
+  // Mental
+  s.mental_state         = mental.current_state   || null;
+  s.has_mental_provider  = mental.has_provider    ?? null;
+  s.mental_provider_name = mental.provider_name   || '';
+  s.mental_last_seen     = mental.last_seen       || '';
+}
+
+// ---------------------------------------------------------------------------
 // RENDERER REGISTRY
 // ---------------------------------------------------------------------------
 
@@ -3591,6 +4837,7 @@ const RENDERERS = {
   maintenance_intake:   maintenanceIntakeRenderer,
   person_detail:        personDetailRenderer,
   maintenance_detail:   maintenanceDetailRenderer,
+  health_intake:        healthIntakeRenderer,
 };
 
 // ---------------------------------------------------------------------------
