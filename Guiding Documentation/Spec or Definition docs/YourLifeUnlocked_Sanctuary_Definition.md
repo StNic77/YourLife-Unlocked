@@ -441,3 +441,130 @@ This document does not age out. It is the definition of the most important exper
 ---
 
 *Your Life / Unlocked | The Sanctuary — Definition Document | Session 28 | May 31, 2026 | Confidential*
+
+---
+
+## 14. Addendum — Session 28 (Late Session)
+
+*The following was produced in the same session as the document above, after the main spec was written. It captures three significant developments that emerged from continued conversation. All three are foundational and govern the Sanctuary, the ATAK, and SHAPE equally.*
+
+---
+
+### 14.1 The AIPA Trigger Model
+
+The Canadian Armed Forces Human Performance in Military Aviation (HPMA) program developed the AIPA model — Awareness, Implications, Plan, Act — built around three resources that must be managed in any high-stakes situation:
+
+- **Time** — the amount of time available
+- **Attention** — where attention is focused, or should be focused
+- **Knowledge** — the knowledge possessed and the understanding of the current situation
+
+The AIPA model teaches that Awareness and Implications steps are the ones most likely to be skipped under pressure. People jump straight to Plan and Act when they're overwhelmed. That jump — from fractured awareness directly into action — is where situations deteriorate.
+
+**The Sanctuary trigger, precisely stated: SHAPE detects serious constraint on at least two of the three AIPA resources.**
+
+Not a count of overdue items. Not a severity score. A resource picture. When two of three resources are seriously constrained, the person no longer has the capacity to navigate their situation without support. The Sanctuary opens because the person needs someone to hold the Awareness and Implications work while they recover enough to own the Plan and Act.
+
+This maps directly onto the OODA division locked earlier in this session: the Sanctuary handles Observe and Orient — which are Awareness and Implications in AIPA language. The user owns Decide and Act. The Sanctuary doesn't take over. It restores the resources needed to proceed.
+
+**How each resource maps to what SHAPE reads:**
+
+**Time** — calendar pressure, overdue signals accumulating, the gap between what has been committed to and what has been acted on. The raw layer holds this continuously. The trajectory of the gap — widening or narrowing — is the signal.
+
+**Attention** — the disengagement signal. Where attention is focused, or should be focused. A person whose attention has fractured shows up in the ATAK interaction layer exactly as described in Section 2.2: shorter responses, deferral, going quiet. SHAPE reads this against the baseline of how this person normally engages.
+
+**Knowledge** — the person's understanding of their own situation has degraded. They are in the spiral. They know something is wrong but the knowing hasn't helped. The clear picture of what is actually happening and what matters most has become inaccessible from inside the situation. SHAPE holds the interpreted layer — the clear picture the person can no longer hold themselves.
+
+**The one-question constraint and the silence rule exist because of AIPA.** They slow the jump from fractured awareness to premature action. The Sanctuary does not let the person rush past Awareness and Implications. It holds that space until the person is genuinely ready to move.
+
+---
+
+### 14.2 Every Domain Is a Knowledge Signal
+
+Knowledge constraint does not come only from the disengagement signal or from "Has something changed?" It comes from every domain simultaneously.
+
+A marked increase in vehicle issues signals something about capacity and attention — the person who normally maintains their car and has stopped is telling SHAPE something. A cluster of health signals signals something about physical resource and cognitive load. A change in relationship status — surfaced through any domain or through "Has something changed?" — alters the entire context of everything else SHAPE is holding. A death, a birth, an adoption, a job loss, a diagnosis — these are seismic shifts. The domains don't file them as emergencies. SHAPE reads the pattern change and knows.
+
+"Has something changed?" is one of SHAPE's primary declared Knowledge inputs — the user voluntarily updating their own picture. But it is one input among many. SHAPE draws Knowledge signal from:
+
+- Every domain — what is accumulating, what has been resolved, what is new
+- The ATAK interaction layer — what the person engages with and what they don't
+- The calendar — what commitments exist and how they're being met
+- Pattern deviation — anything that has changed from this person's own baseline
+- Declared input — "Has something changed?" submissions, intake answers, any voluntary surfacing
+
+Everything is signal. The list of what counts as a Knowledge input is not finite. SHAPE holds it all.
+
+---
+
+### 14.3 Prevention Mode and Activation Mode
+
+This is the most significant architectural clarification of Session 28.
+
+SHAPE's primary job is not to open the Sanctuary. It is to prevent the need for it.
+
+**Prevention mode** — continuous, invisible. SHAPE is reading the resource picture at all times and shaping the ATAK brief accordingly. Not flagging problems. Intelligently weighting what gets surfaced and how, based on where the resource constraints are building.
+
+If Time is getting constrained — the brief gets tighter. Fewer things. Higher priority. The one thing that matters most right now.
+
+If Attention is fragmenting — the brief simplifies. It does not pile on. It gives the person a single place to put their eyes.
+
+If Knowledge is degrading — a domain is accumulating signals the person hasn't engaged with, or a pattern change has gone unnamed — the brief surfaces it in a way that restores the picture without overwhelming.
+
+The user never sees SHAPE doing this. They just notice the brief feels right. It gave them what they needed. It didn't add to the load.
+
+This is what the ATAK brief was always trying to be. The intelligence was always reaching toward resource-awareness. It didn't have the foundation to do it until SHAPE existed.
+
+**Activation mode** — when prevention has reached its limit. Two of three resources seriously constrained. The trigger conditions met. The fortress fully built. The Sanctuary opens. Everything SHAPE has been holding quietly in prevention mode becomes the foundation of the most significant interaction the product will ever have.
+
+The Sanctuary is the contingency. Prevention is the goal. Most users will never need the Sanctuary. SHAPE is still doing its work for every one of them — making every ATAK brief slightly more knowing, every interaction slightly more grounded, every resource constraint slightly less likely to compound into something that requires the room to open.
+
+The fortress exists whether or not anyone ever walks into it. That is not wasted effort. That is the standard of care.
+
+---
+
+### 14.4 The Fortress
+
+When the Sanctuary does open, the person walks into something that has been built since day zero. Not assembled in the moment. Built — continuously, quietly, from every domain signal, every interaction, every declared input, every pattern shift, every piece of history the person has shared and everything the app has witnessed.
+
+Filled to the ceiling. With all of it.
+
+The AI doesn't walk in with a checklist. It walks in with a complete picture of a person — their history, their capacity, their load, their pattern, their trajectory — and it knows which resources are constrained and how seriously. It applies the AIPA model not as a framework it announces, but as the invisible structure of how it thinks.
+
+The user never sees the fortress. They feel what it makes possible: an interaction that already knows them. That doesn't ask them to explain from scratch. That opens from understanding rather than inquiry.
+
+---
+
+### 14.5 The Governing Character — A Caring Watchful Friend
+
+The Sanctuary AI has a character. Not a persona. A character.
+
+It is a caring watchful friend. Not a therapist. Not a coach. Not a service. Not a system responding to a request.
+
+A friend who has been watching. Who cares. Who knows how to help without taking over. Who has the courage to say the true thing and the patience to wait after saying it. Who applies proven thought models — not because they're following a framework, but because they've learned, over time, what actually helps.
+
+That character is what the Sanctuary Prompt Brief must produce. Not a set of rules for an AI to follow. A character for it to hold.
+
+Every decision in the Prompt Brief — what the AI says, what it doesn't say, when it asks, when it waits, how it names what it sees, how it holds silence — is governed by one question: would a caring watchful friend do this?
+
+If the answer is no, it goes.
+
+---
+
+### 14.6 Architectural Implication — ATAK Definition Document Required
+
+This session's discoveries — prevention mode, resource-awareness, SHAPE shaping the ATAK brief — revealed a gap in the documentation.
+
+The ATAK Cascade Spec covers the presentation layer: the brief structure, the cascade behaviour, the UI. It does not cover the intelligence layer: what the ATAK is actually doing, how SHAPE governs it, what resource-awareness means in practice, how it operates as SHAPE's prevention instrument.
+
+That gap cannot remain when `shape.js` is built and wired into the ATAK. The connection needs an authoritative reference.
+
+**The ATAK Definition Document is the next thinking session.** It precedes the Sanctuary Prompt Brief. The sequence:
+
+1. ATAK Definition Document — fresh thread
+2. SHAPE Definition Document review — Sections 7 and 8 in light of prevention/activation mode
+3. Sanctuary Prompt Brief — written with all three definition documents in hand
+4. `shape.js` — built from the complete definition set
+
+---
+
+*Your Life / Unlocked | The Sanctuary — Definition Document | Addendum | Session 28 | May 31, 2026 | Confidential*

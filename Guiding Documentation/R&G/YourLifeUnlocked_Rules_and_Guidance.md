@@ -655,7 +655,15 @@ If the user says no or closes — the Sanctuary waits. It does not guilt. It doe
 
 **The intimacy gradient in the Sanctuary** — by the time the Sanctuary opens, the interaction must be at inner circle depth. Not warm professional. Not helpful service. Inner circle. The copy, the AI behaviour, the tone — all of it must have earned that register before the door opens.
 
-**A full Sanctuary Definition Document has been written (Session 28) and is in the project. Read it before any Sanctuary build begins. No exceptions. The Sanctuary Prompt Brief is next.**
+**The AIPA trigger model — locked Session 28.** The Sanctuary opens when SHAPE detects serious constraint on at least two of three AIPA resources: Time, Attention, Knowledge. Not a count of flags — a resource picture. Time reads from calendar pressure and the gap between commitment and action. Attention reads from the disengagement signal. Knowledge reads from every domain simultaneously — vehicle issues, health signals, relationship changes, life events, pattern deviations, and declared input through "Has something changed?" Everything is signal. The list of Knowledge inputs is not finite.
+
+**Prevention mode and activation mode — locked Session 28.** SHAPE's primary job is to prevent the Sanctuary from being necessary. In prevention mode, SHAPE reads the resource picture continuously and shapes the ATAK brief accordingly — tighter when Time is constrained, simpler when Attention is fragmenting, restorative when Knowledge is degrading. The user never sees this. They just notice the brief feels right. Activation mode is the contingency: when prevention has reached its limit and two of three resources are seriously constrained, the Sanctuary opens. The Sanctuary is the contingency. Prevention is the goal.
+
+**The fortress.** When the Sanctuary opens, the person walks into something built since day zero — from every domain signal, every interaction, every pattern shift, everything the app has witnessed. The AI walks in with a complete picture of a person. Not a checklist. A person.
+
+**The governing character.** The Sanctuary AI is a caring watchful friend. Not a therapist. Not a coach. Not a service. A friend who has been watching, who cares, who knows how to help without taking over. Every decision in the Sanctuary Prompt Brief is governed by one question: would a caring watchful friend do this?
+
+**A full Sanctuary Definition Document has been written (Session 28) and is in the project. An ATAK Definition Document is required before the Sanctuary Prompt Brief is written. Read both before any Sanctuary build begins. No exceptions.**
 
 **Check:** Before any Sanctuary interaction is designed — does this feel like inner circle, or does it feel like a service? If there is any hesitation, it is not ready.
 
@@ -940,7 +948,7 @@ The fix is a design pass, not a logic pass. It should be a dedicated session onc
 | Session 24 | Domain File Rule locked as 2.17. Brief Silence Rule locked as 2.18. Consequence Radius Principle locked as 2.19. Seven-section brief architecture built. Consequence scoring engine built. Range entries as first-class calendar objects. vehicles.js, maintenance.js, calendar.js created. atak.js and home.js significantly rewritten. |
 | Session 25 | health.js created — full health domain module. Health intake built in cascade.js (11 steps, Session 22 order). Collapsible sub-domain brief pattern established. Custom provider intervals — user preference authoritative. store.js defaults fixed. Collapsible Sub-Domain Pattern added as 2.20. custom_html Escape Hatch added as 2.21. UX Debt section added (Part 8) — visual contrast and font size flagged by beta users and confirmed. |
 | Session 27 | SHAPE Definition Document written and added to project. R&G consolidated into single authoritative version — all previous versions superseded. 2.23 updated: SHAPE Definition Document complete. 2.24 updated: Sanctuary Spec is next priority. Session count updated to 27. |
-| Session 28 | Sanctuary Definition Document written and added to project. 2.24 updated with full trigger architecture (three components), opening sequence (Offer, Glimpse, Permission Ask), governing frame (seen not caught), one-question constraint, silence rule, trust boundary. Sanctuary trigger threshold moved from open to elastic-by-design. Session count updated to 28. |
+| Session 28 | Sanctuary Definition Document written and added to project (13 sections + addendum). 2.24 updated: full trigger architecture, opening sequence (Offer/Glimpse/Permission Ask), seen-not-caught frame, OODA division, one-question constraint, silence rule, trust boundary, AIPA trigger model (Time/Attention/Knowledge), prevention mode and activation mode, fortress, governing character (caring watchful friend). ATAK Definition Document identified as required next session. Session count updated to 28. |
 
 ---
 
