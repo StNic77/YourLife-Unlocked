@@ -20,6 +20,42 @@ The ATAK reads individual signals. SHAPE reads the form.
 
 When the form is healthy, it looks a certain way. When life is under stress, the form distorts. When enough domains are distorting simultaneously, the form itself becomes the signal. That signal is not an alarm — it is a recognition. The app has been paying attention long enough to see what is actually happening.
 
+### 1.1 The Architecture Correction — Session 32
+
+**SHAPE is the human intelligence operator. The ATAK is the all-source fusion cell.**
+
+This distinction is load-bearing. It must be held at every level of design and implementation.
+
+SHAPE is not the all-source intelligence cell. SHAPE is the operator in the field — watching, reading, collecting, processing the human picture — and feeding that intelligence into the ATAK. The ATAK receives everything: cold domain data from every domain file, and SHAPE's human intelligence layer on top of it. The ATAK fuses it all. The ATAK is the fusion cell. SHAPE is what makes the fused picture human.
+
+Without SHAPE, the ATAK produces a technically accurate brief that misses the person carrying it. With SHAPE, the brief knows who it is talking to.
+
+**SHAPE makes it human.** That is the line. That is the entire job.
+
+**The design standard this produces:**
+
+> *If this thing is going to work, SHAPE has to be a superhero.*
+
+This is not a metaphor. It is a design standard. SHAPE running at half-capacity produces a product that feels like surveillance. SHAPE running as designed produces a product that feels like it genuinely knows you. Everything else in the architecture depends on SHAPE doing its job at the highest possible level of sophistication.
+
+**The flow the architecture produces:**
+
+*User speaks into the reflecting pool → SHAPE reads it → SHAPE watches all domain signals → SHAPE feeds the ATAK → ATAK fuses everything → Sanctuary opens when the load demands it.*
+
+This flow governs every implementation decision about SHAPE. When in doubt, return to it.
+
+### The Closest Analogy — This Project
+
+This project is the clearest available model for how SHAPE works.
+
+Twenty-seven sessions of work exist not just in memory but in record — session handoffs, a living Rules and Guidance document, domain specs, thinking session outputs, debug notes. The handoffs are the raw layer. The Rules and Guidance is the interpreted layer, periodically rebuilt, always synthesising the accumulated decisions into a living document that governs forward. The specific documents — the Calendar Spec, the ATAK Cascade Spec, this one — are the inflection points: moments where something was understood clearly enough to be written down at depth.
+
+If the person who built this disappeared for a year and came back, they would remember fragments. The feeling of it. Some of the decisions. Not all of it. But the record is honest, cumulative, and written to be read forward. Reading the last four handoffs and the Rules and Guidance would restore the full picture in minutes. Not because anyone remembered — because the record held it.
+
+That is what SHAPE does for the person using this app. They don't have to re-explain themselves every time they open it. They don't have to carry the whole story in their head. The app has been holding it. The intelligence behind every brief, every signal, every Sanctuary opening is the accumulated record of everything the person has shared and everything the app has witnessed — since day zero.
+
+The person doesn't see the record. They feel the result of it. The app knows them. That is not a feature. That is the whole point.
+
 ---
 
 ## 2. What SHAPE Holds
@@ -260,6 +296,41 @@ The Sanctuary is intimate. SHAPE is its instrument. The full depth of SHAPE — 
 
 The intimacy gradient governs this separation. Different depths of knowing belong at different levels of relationship. The ATAK is a trusted colleague. The Sanctuary is the inner circle. SHAPE knows the difference.
 
+### 8.4 The Reflecting Pool — SHAPE's Primary Human Intelligence Feed
+*(Session 32)*
+
+The richest intelligence SHAPE receives does not come from domain data. It comes from what the user says when they are given space to say it freely.
+
+The "Has something changed?" domain is evolving into something more than a capture mechanism. Its destination is a **reflecting pool** — a private space where the user can speak freely: process, vent, grieve, celebrate, confuse themselves out loud, say things they have never said to another person. The user's experience of this space is privacy and permission. What they don't need to know is that SHAPE is reading it.
+
+**The dual function:**
+
+For the user: permission to speak into the void. Private. Safe. No judgment. No action items. Just space.
+
+For SHAPE: the richest intelligence feed in the entire app. Actual language. Threads. Patterns. What the person returns to. What they can't resolve. What they circle back to weeks later, still unresolved. SHAPE reads this with the same discipline it applies to all behavioral signals — and it feeds what it finds into the ATAK as the human layer on top of the cold domain data.
+
+**The collection discipline:**
+
+The reflecting pool is not a passive journal. It uses human intelligence collection principles to draw depth from the user in a way that feels like conversation, not interrogation. Not a form. Not a prompted entry. A skilled collection process that asks the question that opens the next question — until the user has said something true that they didn't know they were going to say.
+
+For the user: it feels like being heard. Like a conversation that went somewhere real.
+
+For SHAPE: it is structured collection. Requirements driven. The questions work toward the intelligence picture the ATAK needs to do its job.
+
+The world voice guide runs underneath the collection. The Operator is collected differently than the Meadow person. Same discipline. Different register. The battlespace is the user. SHAPE is the operator in the field.
+
+**What SHAPE reads in the reflecting pool:**
+
+- Threads that keep returning — the unresolved thing the person comes back to
+- Velocity changes — how frequently the person is entering, and whether that correlates with domain signals
+- Language patterns — what words and frames the person reaches for when describing difficulty
+- The gap between what the domains show and what the person says — sometimes the domains look fine; the person's language tells a different story
+- Resolution or lack of it — threads that close naturally versus threads that persist across weeks and months
+
+**The Meadow signal:** The Meadow person's primary SHAPE signal often lives here. They cope well. They have tools. The domains look managed. But they keep returning to the same thread. SHAPE sees the return visits. The Sanctuary's Glimpse names what it found.
+
+**Status:** The reflecting pool requires a dedicated thinking session before build. The name, the collection discipline, the full HUMINT principles, the UI, the trust architecture — all must be defined before a single line of this domain is written. Do not build before that session has happened.
+
 ---
 
 ## 9. The SHAPE File — Architecture
@@ -357,4 +428,4 @@ This document does not age out. It is the definition of the most important conce
 
 ---
 
-*Your Life / Unlocked | SHAPE Definition Document | Session 27 | May 31, 2026 | Confidential*
+*Your Life / Unlocked | SHAPE Definition Document | Session 27, updated Session 32 | June 3, 2026 | Confidential*

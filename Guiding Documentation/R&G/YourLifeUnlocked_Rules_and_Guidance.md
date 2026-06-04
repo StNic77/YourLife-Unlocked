@@ -1,6 +1,6 @@
 # YOUR LIFE: UNLOCKED
 ## Rules, Principles & Design Guidance
-*Living Document — Updated Each Session | Last Revised: June 1, 2026 (Session 29) | Authoritative Consolidated Version | Confidential*
+*Living Document — Updated Each Session | Last Revised: June 3, 2026 (Session 32) | Authoritative Consolidated Version | Confidential*
 
 ---
 
@@ -22,7 +22,7 @@ Before responding to any agenda item, design question, or build request, Claude 
 - The last three to four session handoffs
 - This Rules and Guidance document
 
-If Claude has not done this, Shawn stops the session until it is done. This is non-negotiable. The project knowledge is the authority. Working from memory or momentum produces drift. Drift compounds. Twenty-nine sessions of coherent work depends on this standard being held at the start of every session.
+If Claude has not done this, Shawn stops the session until it is done. This is non-negotiable. The project knowledge is the authority. Working from memory or momentum produces drift. Drift compounds. Twenty-eight sessions of coherent work depends on this standard being held at the start of every session.
 
 **The six check-in questions:**
 
@@ -663,7 +663,7 @@ If the user says no or closes — the Sanctuary waits. It does not guilt. It doe
 
 **The governing character.** The Sanctuary AI is a caring watchful friend. Not a therapist. Not a coach. Not a service. A friend who has been watching, who cares, who knows how to help without taking over. Every decision in the Sanctuary Prompt Brief is governed by one question: would a caring watchful friend do this?
 
-**A full Sanctuary Definition Document has been written (Session 28) and is in the project. An ATAK Definition Document has been written (Session 29) and is in the project. Both must be read before the Sanctuary Prompt Brief is written. No exceptions.**
+**A full Sanctuary Definition Document has been written (Session 28) and is in the project. An ATAK Definition Document is required before the Sanctuary Prompt Brief is written. Read both before any Sanctuary build begins. No exceptions.**
 
 **Check:** Before any Sanctuary interaction is designed — does this feel like inner circle, or does it feel like a service? If there is any hesitation, it is not ready.
 
@@ -903,6 +903,11 @@ That is not an aspiration. That is the shipping standard.
 - Full notification philosophy — frequency, opt-out model, tone calibration per season?
 - Health & Well-being domain name — "Health", "Well-being", "Readiness" (Operator), or something else? Not locked.
 - Manufacturer interval vs user preference — quiet acknowledgement of divergence in vehicle detail. Intelligence exists, flag not yet built.
+- SHAPE write model — what gets written to the raw layer and when? Every ATAK synthesis, key moments only, or both?
+- SHAPE interpreted layer rebuild trigger — what causes a rebuild? Time-based, event-based, or both?
+- Sanctuary trigger threshold — architecture locked (Session 28): three components, accumulation + disengagement + final blow. Specific thresholds elastic by design, calibrate through deployment.
+- **Reflecting pool / SHAPE collection domain** — "Has something changed?" is evolving into a dedicated HUMINT collection domain. Name, collection discipline, UI, trust architecture, and HUMINT principles all require a dedicated thinking session before any build begins. Do not build this domain until that session has happened. (Session 32)
+- **HUMINT collection principles** — the governing discipline for the reflecting pool domain. How the extraction process works across all eight worlds. Intelligence requirements framework. Requires its own dedicated thinking session — likely the most important thinking session remaining on the product. (Session 32)
 - Female perspective — not an open decision, an overdue requirement. Dedicated session before any real user sees the product. Listed here as a reminder of its urgency, not its optionality.
 
 ---
@@ -946,7 +951,10 @@ The fix is a design pass, not a logic pass. It should be a dedicated session onc
 | Session 25 | health.js created — full health domain module. Health intake built in cascade.js (11 steps, Session 22 order). Collapsible sub-domain brief pattern established. Custom provider intervals — user preference authoritative. store.js defaults fixed. Collapsible Sub-Domain Pattern added as 2.20. custom_html Escape Hatch added as 2.21. UX Debt section added (Part 8) — visual contrast and font size flagged by beta users and confirmed. |
 | Session 27 | SHAPE Definition Document written and added to project. R&G consolidated into single authoritative version — all previous versions superseded. 2.23 updated: SHAPE Definition Document complete. 2.24 updated: Sanctuary Spec is next priority. Session count updated to 27. |
 | Session 28 | Sanctuary Definition Document written and added to project (13 sections + addendum). 2.24 updated: full trigger architecture, opening sequence (Offer/Glimpse/Permission Ask), seen-not-caught frame, OODA division, one-question constraint, silence rule, trust boundary, AIPA trigger model (Time/Attention/Knowledge), prevention mode and activation mode, fortress, governing character (caring watchful friend). ATAK Definition Document identified as required next session. Session count updated to 28. |
-| Session 29 | ATAK Definition Document written and added to project (14 sections). Intelligence layer defined: brief as act of judgment, three governing factors (urgency, consequence, capacity), SHAPE-ATAK relationship (form not portrait), prevention mode mechanics for all three AIPA resources, consequence scoring engine, seasonal voice model, interaction layer read, consequence radius, final blow signal location, ATAK behaviour during open Sanctuary season, store interface, SHAPE interface (Section 11.2). All five implementation variables resolved: capacity signal thresholds (green/amber/red composite, 90-day rolling baseline), consequence weight table (2–5 scale, all HC/SC types), season signal confidence threshold (10-session minimum, 70% alignment at 20+ sessions), disengagement baseline window (15-session minimum, 3 consecutive sessions on 2+ measures, 30-session rolling window), convergence flag definition (3 domains, 2-week duration, worsening trajectory on 2+). 2.24 updated: ATAK Definition Document complete. Session count updated to 29. |
+| Session 29 | ATAK Definition Document written and added to project. Intelligence layer architecture locked: urgency × consequence × capacity as the three governing factors. Prevention mode architecture locked. AIPA resource constraint model locked. Consequence weight table locked (HC-1 through SC-6). Capacity signal thresholds locked. Convergence flag definition locked. Season signal confidence thresholds locked. Disengagement baseline window locked. All five open calibration questions from Session 28 worked and locked as launch calibrations. |
+| Session 30 | Sanctuary Prompt Brief written (Draft) — 13 sections. Governing character locked: caring watchful friend. Three-move opening sequence locked: Offer / Glimpse / Permission Ask. Seen-not-caught frame. One-question constraint. Silence rule. Trust boundary. World Voice Guide identified as dependency before Brief can be finalised. |
+| Session 31 | World Voice Guide written and locked as pointing true. Governing principle locked: plain language for everyone, moderated by the world. Three copy tests locked: trope test, feather test, Betty test. All eight world entries written. Standing rule: every piece of copy measured against the Voice Guide before it ships — world by world, no exceptions. |
+| Session 32 | Architecture correction locked — SHAPE is the human intelligence operator; ATAK is the all-source fusion cell. SHAPE feeds the ATAK; ATAK fuses everything. SHAPE makes it human. Design standard: SHAPE has to be a superhero. Sanctuary Prompt Brief moved from Draft to Final — Section 12 written (not-ready response model, ATAK tile, two-response model). ATAK tile locked: "Ready to slow down for a minute?" Six of eight world opening sequences written and locked as direction: Operator, Range, Garden, Journey, Practice, Meadow. Two remaining: Playbook, Summit. Reflecting pool / SHAPE collection domain flagged — "Has something changed?" evolving into primary HUMINT feed for SHAPE; requires dedicated thinking session before build. HUMINT collection principles flagged as governing discipline for that domain — dedicated session required. SHAPE and ATAK Definition Documents updated. |
 
 ---
 

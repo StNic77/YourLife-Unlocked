@@ -90,6 +90,22 @@ Each section's content is a judgment, not a query. SHAPE makes that judgment pos
 
 ## 3. SHAPE and the ATAK — The Relationship
 
+### 3.0 The Architecture — Session 32 Correction
+
+**The ATAK is the all-source fusion cell. SHAPE is the human intelligence operator feeding it.**
+
+This distinction supersedes any prior framing where SHAPE and the ATAK were described as equivalent intelligence layers or where SHAPE was described as the all-source cell.
+
+The ATAK receives everything: cold domain data from every domain file — schedule, health, vehicles, maintenance, calendar — and SHAPE's human intelligence layer on top of it. The ATAK fuses it all. The ATAK is the fusion cell. The ATAK produces the intelligence product.
+
+SHAPE does not produce the brief. SHAPE does not manage domain signals. SHAPE is the operator in the field — watching, reading, collecting the human picture — and feeding that intelligence into the ATAK. Without SHAPE, the ATAK produces a technically accurate brief that misses the person carrying it. With SHAPE, the brief knows who it is talking to.
+
+**SHAPE makes it human.** That is the entirety of SHAPE's job description in relation to the ATAK.
+
+The flow:
+
+*User speaks into the reflecting pool → SHAPE reads it → SHAPE watches all domain signals → SHAPE feeds the ATAK → ATAK fuses everything → brief is produced → Sanctuary opens when the load demands it.*
+
 SHAPE does not tell the ATAK what to put in the brief. SHAPE provides the intelligence background that the ATAK uses to make its own judgment. The distinction matters.
 
 The ATAK reads domain signals. It knows what is overdue, what is upcoming, what has changed. Those signals are factual. They come from the store. They are the same regardless of SHAPE.
@@ -517,4 +533,4 @@ The standard for the ATAK brief is deceptively simple: surface the right things,
 
 ---
 
-*Your Life / Unlocked | ATAK Definition Document | Session 29 | June 1, 2026 | Confidential*
+*Your Life / Unlocked | ATAK Definition Document | Session 29, updated Session 32 | June 3, 2026 | Confidential*
