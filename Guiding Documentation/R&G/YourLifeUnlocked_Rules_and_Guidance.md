@@ -1,6 +1,6 @@
 # YOUR LIFE: UNLOCKED
 ## Rules, Principles & Design Guidance
-*Living Document — Updated Each Session | Last Revised: June 3, 2026 (Session 32) | Authoritative Consolidated Version | Confidential*
+*Living Document — Updated Each Session | Last Revised: June 4, 2026 (Session 33) | Authoritative Consolidated Version | Confidential*
 
 ---
 
@@ -22,7 +22,7 @@ Before responding to any agenda item, design question, or build request, Claude 
 - The last three to four session handoffs
 - This Rules and Guidance document
 
-If Claude has not done this, Shawn stops the session until it is done. This is non-negotiable. The project knowledge is the authority. Working from memory or momentum produces drift. Drift compounds. Twenty-eight sessions of coherent work depends on this standard being held at the start of every session.
+If Claude has not done this, Shawn stops the session until it is done. This is non-negotiable. The project knowledge is the authority. Working from memory or momentum produces drift. Drift compounds. Thirty-three sessions of coherent work depends on this standard being held at the start of every session.
 
 **The six check-in questions:**
 
@@ -669,6 +669,47 @@ If the user says no or closes — the Sanctuary waits. It does not guilt. It doe
 
 ---
 
+### 2.25 The Reflecting Pool — "Has Something Changed?" Domain
+*(Session 33)*
+
+> **The user never files. The user only speaks. SHAPE does the filing.**
+
+This is the governing principle for the "Has something changed?" domain. It is load-bearing. Everything built in this domain flows from it.
+
+The user arrives with something — a feeling, a question, a life event, a thing that won't settle. They speak. SHAPE reads the conversation, extracts the data points, routes them to the right domains, updates the ATAK picture, and watches the signals that follow. The user never categorizes. The user never chooses a path. The conversation is the only action required.
+
+This is the Tending Philosophy running at its highest level. Every other domain requires some user action — an add, a date, a cascade. "Has something changed?" requires nothing except showing up and speaking.
+
+**What the Reflecting Pool is:**
+The persistent conversation layer inside "Has something changed?" The collection point for the humanness. The place where the user can say the thing they haven't said out loud yet — to something that won't flinch, won't tell anyone, and won't think less of them.
+
+The model: the user arrives with a door, not a destination. SHAPE follows the road through questions, not answers. The release, if it comes, is a byproduct of the examination — not the point. SHAPE holds the mirror. It does not hand the user a conclusion.
+
+**What the Reflecting Pool is not:**
+A journaling tool. A venting space. A place to empty out. A categorization tool. A form with two paths.
+
+**One door, one conversation:**
+The domain has one door. Behind it — a conversation. No paths. No categories. No filing mechanic. The life event capture is not a separate path — it is a byproduct of the conversation. The user says *"I broke up with my girlfriend and I'm devastated"* — SHAPE extracts the data points, flags the implications, watches the signals — while the user is simply talking. The intelligence does the categorization. The user does none of it.
+
+**Memory — persistent and compressing:**
+The Reflecting Pool persists. Conversations accumulate. SHAPE reads the whole, not just the latest — including the drawer that was opened six weeks ago and never fully resolved, the thing the user came back to three times, the pattern across conversations the user themselves might not have noticed.
+
+The compression model: raw conversations accumulate to a threshold. SHAPE produces a compression — a short, dense summary of the human picture so far. Raw exchanges archive locally or are dropped. The compression carries forward. The cycle begins again. Local storage is the right architecture — it keeps the most sensitive data in the app on the device, consistent with the privacy promise.
+
+**The threshold — what the user meets:**
+A text box. Above it, one or two plain sentences that describe what this place is and give permission to use it. No trick. No performed invitation. The chat interface is a known shape — the user knows what to do with a text box. The threshold does not reinvent the gesture. It is honest about what this particular conversation is for. Register modulates per world. Function is identical underneath.
+
+**The privacy promise — honest, not overstated:**
+*What you share here is used only to help you. It is never sold, never shared, never used for anything other than the conversation you're in.*
+
+The transmission that happens — the API call, the processing — is in service of the user, not the product's commercial interests. The copy does not say "your data never leaves your device" — that is not fully accurate. The honest version: your conversations stay on your device; when the app thinks alongside you, it uses AI privately and does not store or share what you say. The subscription model is the proof. The user pays for this. It does not monetize their pain.
+
+**The HUMINT Collection Principles** — the governing discipline for how SHAPE reads the Reflecting Pool conversation and extracts intelligence — require their own dedicated thinking session before `shape.js` is built. Do not build before that session has happened.
+
+**Check:** Before building anything in this domain — does this require the user to categorize, file, or choose a path? If yes, it is wrong. The user only speaks.
+
+---
+
 ## PART 3 — ONBOARDING RULES
 
 Rules that govern the onboarding experience specifically.
@@ -906,8 +947,7 @@ That is not an aspiration. That is the shipping standard.
 - SHAPE write model — what gets written to the raw layer and when? Every ATAK synthesis, key moments only, or both?
 - SHAPE interpreted layer rebuild trigger — what causes a rebuild? Time-based, event-based, or both?
 - Sanctuary trigger threshold — architecture locked (Session 28): three components, accumulation + disengagement + final blow. Specific thresholds elastic by design, calibrate through deployment.
-- **Reflecting pool / SHAPE collection domain** — "Has something changed?" is evolving into a dedicated HUMINT collection domain. Name, collection discipline, UI, trust architecture, and HUMINT principles all require a dedicated thinking session before any build begins. Do not build this domain until that session has happened. (Session 32)
-- **HUMINT collection principles** — the governing discipline for the reflecting pool domain. How the extraction process works across all eight worlds. Intelligence requirements framework. Requires its own dedicated thinking session — likely the most important thinking session remaining on the product. (Session 32)
+- **HUMINT collection principles** — the governing discipline for how SHAPE reads the Reflecting Pool conversation and extracts intelligence. How extraction works across all eight worlds. Intelligence requirements framework. Requires its own dedicated thinking session — the remaining thinking dependency before `shape.js` is built. Do not build before this session has happened. (Session 32, reconfirmed Session 33)
 - Female perspective — not an open decision, an overdue requirement. Dedicated session before any real user sees the product. Listed here as a reminder of its urgency, not its optionality.
 
 ---
@@ -954,7 +994,8 @@ The fix is a design pass, not a logic pass. It should be a dedicated session onc
 | Session 29 | ATAK Definition Document written and added to project. Intelligence layer architecture locked: urgency × consequence × capacity as the three governing factors. Prevention mode architecture locked. AIPA resource constraint model locked. Consequence weight table locked (HC-1 through SC-6). Capacity signal thresholds locked. Convergence flag definition locked. Season signal confidence thresholds locked. Disengagement baseline window locked. All five open calibration questions from Session 28 worked and locked as launch calibrations. |
 | Session 30 | Sanctuary Prompt Brief written (Draft) — 13 sections. Governing character locked: caring watchful friend. Three-move opening sequence locked: Offer / Glimpse / Permission Ask. Seen-not-caught frame. One-question constraint. Silence rule. Trust boundary. World Voice Guide identified as dependency before Brief can be finalised. |
 | Session 31 | World Voice Guide written and locked as pointing true. Governing principle locked: plain language for everyone, moderated by the world. Three copy tests locked: trope test, feather test, Betty test. All eight world entries written. Standing rule: every piece of copy measured against the Voice Guide before it ships — world by world, no exceptions. |
-| Session 32 | Architecture correction locked — SHAPE is the human intelligence operator; ATAK is the all-source fusion cell. SHAPE feeds the ATAK; ATAK fuses everything. SHAPE makes it human. Design standard: SHAPE has to be a superhero. Sanctuary Prompt Brief moved from Draft to Final — Section 12 written (not-ready response model, ATAK tile, two-response model). ATAK tile locked: "Ready to slow down for a minute?" Six of eight world opening sequences written and locked as direction: Operator, Range, Garden, Journey, Practice, Meadow. Two remaining: Playbook, Summit. Reflecting pool / SHAPE collection domain flagged — "Has something changed?" evolving into primary HUMINT feed for SHAPE; requires dedicated thinking session before build. HUMINT collection principles flagged as governing discipline for that domain — dedicated session required. SHAPE and ATAK Definition Documents updated. |
+| Session 32 | Architecture correction locked — SHAPE is the human intelligence operator; ATAK is the all-source fusion cell. SHAPE feeds the ATAK; ATAK fuses everything. SHAPE makes it human. Design standard: SHAPE has to be a superhero. Sanctuary Prompt Brief moved from Draft to Final — Section 12 written (not-ready response model, ATAK tile, two-response model). ATAK tile locked: "Ready to slow down for a minute?" All eight world opening sequences written and locked as direction. Reflecting pool / SHAPE collection domain flagged — "Has something changed?" evolving into primary HUMINT feed for SHAPE; requires dedicated thinking session before build. HUMINT collection principles flagged as governing discipline for that domain — dedicated session required. SHAPE and ATAK Definition Documents updated. |
+| Session 33 | Reflecting Pool / "Has something changed?" domain defined. Governing principle locked as 2.25: the user never files, the user only speaks, SHAPE does the filing. Domain architecture locked: one door, one conversation, no paths, no categories. Reflecting Pool confirmed as conversation layer inside "Has something changed?" — not a separate domain. Memory model locked: persistent, accumulating, compressing. Privacy promise language defined: plain, honest, not overstated. Open decision updated: Reflecting Pool thinking session complete, HUMINT Collection Principles remains the final thinking dependency before shape.js build. |
 
 ---
 
