@@ -26,9 +26,9 @@ import { store } from './store.js';
 // ---------------------------------------------------------------------------
 
 // Days within which a vehicle date field is considered urgent.
-const VEHICLE_URGENT_THRESHOLD  = 30;  // appears in grab-and-go as urgent
-const VEHICLE_SIGNAL_UPCOMING   = 30;  // calendar signal — caution
-const VEHICLE_SIGNAL_OVERDUE    = 0;   // calendar signal — warning (past due)
+const VEHICLE_URGENT_THRESHOLD  = 30;   // appears in grab-and-go as urgent
+const VEHICLE_SIGNAL_UPCOMING   = 365;  // calendar signal — write up to 12 months out
+const VEHICLE_SIGNAL_OVERDUE    = 0;    // calendar signal — warning (past due)
 
 export function isVehicleUrgent(v) {
   return [v.registration_expiry, v.insurance_expiry, v.service_due].some(f => {
@@ -136,7 +136,7 @@ function _syncVehicleSignals(vehicle) {
     if (days > VEHICLE_SIGNAL_UPCOMING) return;
 
     const overdue  = days < VEHICLE_SIGNAL_OVERDUE;
-    const pressure = overdue ? 'warning' : days <= 7 ? 'warning' : 'caution';
+    const pressure = overdue ? 'warning' : days <= 7 ? 'warning' : days <= 30 ? 'caution' : 'info';
     const title    = overdue
       ? `${vehicle.name || 'Vehicle'} — ${label} overdue`
       : `${vehicle.name || 'Vehicle'} — ${label} in ${days} day${days === 1 ? '' : 's'}`;

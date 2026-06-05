@@ -30,6 +30,11 @@ import {
   getHealthBrief,
   syncHealthSignals,
 } from './health.js';
+import {
+  getReflectingPoolBrief,
+  createReflectingPoolPanel,
+} from './reflectingpool.js';
+import { syncBirthdaySignals } from './atak.js';
 
 // ---------------------------------------------------------------------------
 // DEV MODE — Hotspot visualiser
@@ -252,12 +257,7 @@ function getDomainBrief(domain, world) {
       return getMaintenanceBrief();
 
     case 'capture':
-      return {
-        title: 'Quick capture',
-        sections: [],
-        input: true,
-        placeholder: 'What do you need to remember?',
-      };
+      return getReflectingPoolBrief();
 
     default:
       return {
@@ -289,6 +289,7 @@ export function createHome(world) {
   syncVehicleSignals();
   syncMaintenanceSignals();
   syncHealthSignals();
+  syncBirthdaySignals();
 
   const urgentItems  = getUrgentItems();
   const hotspots     = HOTSPOT_MAPS[world.id] || HOTSPOT_MAPS.operator;
@@ -1044,10 +1045,118 @@ export function createHome(world) {
       if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
     };
 
+    // Opens the medical appointment cascade for a tapped provider or screening line.
+    const openMedicalAppointment = (context) => {
+      const apptTypeLabels = {
+        annual_physical: 'Annual physical',
+        dentist:         'Dental appointment',
+        eye_care:        'Eye exam',
+        skin:            'Skin check',
+        specialist:      'Specialist',
+        screening:       context.screening_label || 'Screening',
+      };
+      const title = context.provider_name
+        || apptTypeLabels[context.appointment_type]
+        || 'Appointment';
+
+      const cascadeItem = {
+        id:    `medical_appt_${context.signal_ref || context.appointment_type}`,
+        title,
+        body:  context.next_due ? `Due ${context.next_due}` : 'Schedule your appointment',
+        cascade: {
+          type:    'medical_appointment',
+          context: { ...context, province: store.get('user')?.province || null },
+        },
+      };
+      const cascadePanel = createCascade({
+        item:       cascadeItem,
+        onBack:     () => {},
+        onComplete: () => { syncHealthSignals(); },
+      });
+      if (cascadePanel) cascadePanel.open(document.getElementById('app') || el);
+    };
+
+    // Opens physical advice cascade — personalised training and nutrition guidance.
+    const openPhysicalAdvice = (context) => {
+      const cascadeItem = {
+        id:    'physical_advice',
+        title: 'Physical',
+        body:  'Training and nutrition guidance',
+        cascade: {
+          type:    'physical_advice',
+          context: { ...context },
+        },
+      };
+      const cascadePanel = createCascade({
+        item:   cascadeItem,
+        onBack: () => {},
+        onComplete: () => {},
+      });
+      if (cascadePanel) cascadePanel.open(document.getElementById('app') || el);
+    };
+
+    // Well-being action — routes based on current state and provider status.
+    // Has provider → therapy session prep cascade.
+    // Managing or hard season, no provider → reflecting pool.
+    // Doing well, no provider → therapy session prep (lighter touch).
+    const openWellbeingAction = (context) => {
+      const { current_state, has_provider, provider_name, provider_type, last_seen } = context;
+      const goToPool = !has_provider && (current_state === 'hard_season' || current_state === 'managing');
+
+      if (goToPool) {
+        closeBrief();
+        const rpContainer = document.createElement('div');
+        rpContainer.id = 'rp-overlay';
+        rpContainer.style.cssText = `
+          position:fixed;inset:0;z-index:200;
+          background:linear-gradient(to top,rgba(8,8,8,0.99) 0%,rgba(12,12,12,0.97) 100%);
+          display:flex;flex-direction:column;
+          animation:rpSlideUp 0.3s ease;
+        `;
+        if (!document.getElementById('rp-slide-keyframe')) {
+          const ks = document.createElement('style');
+          ks.id = 'rp-slide-keyframe';
+          ks.textContent = `@keyframes rpSlideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}`;
+          document.head.appendChild(ks);
+        }
+        document.body.appendChild(rpContainer);
+        createReflectingPoolPanel(rpContainer, () => rpContainer.remove());
+        return;
+      }
+
+      // Has provider or doing well — open well-being session prep cascade
+      const cascadeItem = {
+        id:    'wellbeing_session',
+        title: provider_name || 'Well-being',
+        body:  'Session preparation',
+        cascade: {
+          type:    'wellbeing_session',
+          context: { ...context },
+        },
+      };
+      const cascadePanel = createCascade({
+        item:   cascadeItem,
+        onBack: () => {},
+        onComplete: () => {},
+      });
+      if (cascadePanel) cascadePanel.open(document.getElementById('app') || el);
+    };
+
     panel.querySelectorAll('.health-subdomain-label').forEach(label => {
       label.addEventListener('click',      () => openHealthSubDomain(label.dataset.subDomain));
       label.addEventListener('mouseenter', () => label.style.color = 'rgba(210,160,60,0.9)');
       label.addEventListener('mouseleave', () => label.style.color = 'rgba(240,235,218,0.65)');
+    });
+
+    // Tappable health action lines — medical appointments, physical advice, well-being routing
+    panel.querySelectorAll('.health-action-line').forEach(row => {
+      row.addEventListener('click', () => {
+        const action  = row.dataset.healthAction;
+        const context = JSON.parse(row.dataset.healthContext || '{}');
+        if (action === 'medical_appointment') openMedicalAppointment(context);
+        if (action === 'physical_advice')     openPhysicalAdvice(context);
+        if (action === 'wellbeing_action')    openWellbeingAction(context);
+      });
     });
 
     // Task detail — opens when user taps a maintenance task row
@@ -1140,6 +1249,27 @@ export function createHome(world) {
       if (cascadePanel) cascadePanel.open(document.getElementById("app") || el);
     };
 
+    // Reflecting pool — full-screen conversation panel
+    const openReflectingPool = () => {
+      closeBrief();
+      const rpContainer = document.createElement('div');
+      rpContainer.id = 'rp-overlay';
+      rpContainer.style.cssText = `
+        position:fixed;inset:0;z-index:200;
+        background:linear-gradient(to top,rgba(8,8,8,0.99) 0%,rgba(12,12,12,0.97) 100%);
+        display:flex;flex-direction:column;
+        animation:rpSlideUp 0.3s ease;
+      `;
+      if (!document.getElementById('rp-slide-keyframe')) {
+        const ks = document.createElement('style');
+        ks.id = 'rp-slide-keyframe';
+        ks.textContent = `@keyframes rpSlideUp{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}`;
+        document.head.appendChild(ks);
+      }
+      document.body.appendChild(rpContainer);
+      createReflectingPoolPanel(rpContainer, () => rpContainer.remove());
+    };
+
     // Vehicle intake — opens when user taps "Add a vehicle" CTA
     const openVehicleIntake = () => {
       const intakeItem = {
@@ -1191,24 +1321,13 @@ export function createHome(world) {
           openMaintenanceIntake();
         } else if (action === 'setup_health') {
           openHealthIntake();
+        } else if (action === 'open_reflecting_pool') {
+          openReflectingPool();
         } else {
           console.log(`CTA action: ${action}`);
         }
       });
     });
-
-    // Capture save — quick note
-    const saveBtn = panel.querySelector('#capture-save');
-    if (saveBtn) {
-      saveBtn.addEventListener('click', () => {
-        const input = panel.querySelector('#capture-input');
-        if (!input?.value.trim()) return;
-        const notes = store.get('capture_notes') || [];
-        notes.push({ text: input.value.trim(), ts: new Date().toISOString() });
-        store.set('capture_notes', notes);
-        closeBrief();
-      });
-    }
   }
 
   // ── Keyframe injection — once per session ─────────────────────────────────

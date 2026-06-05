@@ -80,7 +80,7 @@ export function getMaintenanceBrief() {
 //   - Task deleted (retires signal)
 // ---------------------------------------------------------------------------
 
-const SIGNAL_UPCOMING_DAYS = 14;  // write a signal when task is due within this window
+const SIGNAL_UPCOMING_DAYS = 365;  // write signals up to 12 months out
 
 function _signalId(taskId) {
   return `sig_maintenance_${taskId}`;
@@ -109,7 +109,7 @@ function _syncTaskSignal(task) {
   }
 
   const overdue  = days < 0;
-  const pressure = overdue ? 'warning' : days <= 3 ? 'warning' : 'caution';
+  const pressure = overdue ? 'warning' : days <= 3 ? 'warning' : days <= 30 ? 'caution' : 'info';
   const title    = overdue
     ? `${task.label} — overdue by ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'}`
     : days === 0

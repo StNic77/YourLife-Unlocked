@@ -173,32 +173,51 @@ Return JSON with these fields (use null for unknown values):
     return safeParseJSON(raw);
   },
 
-  async getMedicalCascade({ route, appointment_type, provider_name, provider_phone, provider_url, province }) {
-    const system = `You are a data retrieval service for a personal life app.
+  async getMedicalCascade({ route, appointment_type, provider_name, provider_phone, provider_url, province,
+      age, sex, conditions, medications, screenings_due, last_seen, next_due }) {
+    const system = `You are a health preparation assistant inside a personal life app.
 Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
-You have knowledge of healthcare booking systems and clinic finding in Canada and the US.
+You have knowledge of healthcare booking systems, preventive care guidelines, and appointment preparation in Canada and the US.
 Never fabricate specific clinic names, addresses, or phone numbers — use null and provide a search query instead.
-Provide accurate what_to_mention guidance based on appointment type.`;
+Provide accurate, age-appropriate, and personalised preparation guidance based on the patient profile provided.
+Health Intelligence Boundary: surface reminders and broadly accepted general guidance only. Never give medical advice, diagnoses, or medication commentary.
+Keep all text concise — displayed in a compact mobile interface.`;
 
     const apptDesc = appointment_type?.replace(/_/g, ' ') || 'general appointment';
+    const patientProfile = [
+      age  ? `Age: ${age}`  : null,
+      sex  ? `Sex assigned at birth: ${sex}` : null,
+      conditions?.length  ? `Conditions on file: ${conditions.join(', ')}` : null,
+      medications?.length ? `Medications on file: ${medications.length} (names withheld)` : null,
+      screenings_due?.length ? `Screenings due or overdue: ${screenings_due.join(', ')}` : null,
+      last_seen ? `Last appointment: ${last_seen}` : null,
+      next_due  ? `Next due: ${next_due}` : null,
+    ].filter(Boolean).join('\n');
 
     const messages = [{
       role: 'user',
       content: `Appointment type: ${apptDesc}.
-Province: ${province || 'unknown'}.
+Province/region: ${province || 'unknown'}.
 Route: ${route}.
 Provider name on file: ${provider_name || 'none'}.
 Provider phone on file: ${provider_phone || 'none'}.
 Provider booking URL on file: ${provider_url || 'none'}.
 
-Return JSON with these fields (use null for unknown values):
+Patient profile:
+${patientProfile || 'No profile data available.'}
+
+Return JSON (use null for unknown):
 {
   "provider_name": "string or null",
   "provider_address": "string or null",
   "provider_hours": "string or null",
   "provider_phone": "string or null",
   "booking_url": "string or null",
-  "what_to_mention": "string",
+  "what_to_bring": ["string — practical items to bring"],
+  "what_to_mention": "string — personalised to this patient's profile and appointment type",
+  "questions_to_ask": ["string — 3 to 5 questions appropriate for this appointment and patient profile"],
+  "screenings_to_request": ["string — age/sex appropriate screenings to ask about at this visit, if any"],
+  "prep_notes": "string or null — specific preparation required (fasting, stopping medications, etc.)",
   "last_visit_label": "string or null",
   "clinic_name": "string or null",
   "clinic_address": "string or null",
@@ -210,7 +229,7 @@ Return JSON with these fields (use null for unknown values):
 }`,
     }];
 
-    const raw   = await this.send({ system, messages, maxTokens: 600, model: MODEL_FAST });
+    const raw = await this.send({ system, messages, maxTokens: 900, model: MODEL_RICH });
     return safeParseJSON(raw);
   },
 
@@ -411,5 +430,190 @@ Respond with one quiet, warm sentence acknowledging this.`,
 
     const raw = await this.send({ system, messages, maxTokens: 60, model: MODEL_RICH });
     return raw.trim();
+  },
+
+  // ---------------------------------------------------------------------------
+  // getPhysicalAdvice — personalised training or nutrition guidance
+  // Route: 'training' | 'nutrition'
+  // Calibrated to the user's activity level, goals, and any limitations.
+  // Health Intelligence Boundary: broadly accepted general guidance only.
+  // ---------------------------------------------------------------------------
+
+  async getPhysicalAdvice({ route, activity_level, goals, limitations, workout_note }) {
+    const system = `You are a fitness and nutrition guidance assistant inside a personal life app.
+Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
+Provide practical, evidence-based guidance calibrated to the user's profile.
+Health Intelligence Boundary: broadly accepted general guidance only. Never diagnose, prescribe, or give clinical advice.
+Keep all text concise — this is displayed in a compact mobile interface. One to two sentences per field maximum.`;
+
+    const profileParts = [
+      activity_level ? `Activity level: ${activity_level.replace(/_/g, ' ')}` : null,
+      goals?.length  ? `Goals: ${goals.join(', ')}` : null,
+      limitations?.length ? `Limitations: ${limitations.join(', ')}` : null,
+      workout_note   ? `Note: ${workout_note}` : null,
+    ].filter(Boolean).join('\n');
+
+    const trainingSchema = `{
+  "summary": "string — one sentence calibrating to their current level",
+  "weekly_structure": "string — how many days and what split makes sense",
+  "recommended_types": ["string — 2 to 4 specific activity types suited to their goals"],
+  "intensity_guidance": "string — appropriate intensity for their level",
+  "limitations_note": "string or null — how to work around their limitations if any",
+  "progression_tip": "string — one practical next step to improve"
+}`;
+
+    const nutritionSchema = `{
+  "summary": "string — one sentence on their current picture",
+  "eating_pattern": "string — broad pattern that suits their goals and activity level",
+  "goal_alignment": ["string — 2 to 3 specific nutrition priorities for their goals"],
+  "foods_to_prioritise": ["string — 3 to 5 practical foods or food groups"],
+  "timing_note": "string or null — pre/post workout fuelling if relevant",
+  "limitations_note": "string or null — nutrition considerations for their limitations if any"
+}`;
+
+    const messages = [{
+      role: 'user',
+      content: `Route: ${route}.
+User profile:
+${profileParts || 'No profile data.'}
+
+Return JSON matching this schema:
+${route === 'training' ? trainingSchema : nutritionSchema}`,
+    }];
+
+    const raw = await this.send({ system, messages, maxTokens: 600, model: MODEL_RICH });
+    return safeParseJSON(raw);
+  },
+
+  // ---------------------------------------------------------------------------
+  // getWellbeingSessionPrep — therapy/counselling session preparation
+  // Returns themes to raise, questions to consider, what to bring.
+  // Health Intelligence Boundary: never clinical, never diagnostic.
+  // ---------------------------------------------------------------------------
+
+  async getWellbeingSessionPrep({ provider_name, provider_type, last_seen, current_state }) {
+    const system = `You are a session preparation assistant inside a personal life app.
+Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
+Help the user prepare for a therapy or counselling session with practical, thoughtful prompts.
+Health Intelligence Boundary: never diagnose, never clinical. Supportive and practical only.
+Keep all text concise — displayed in a compact mobile interface.`;
+
+    const profileParts = [
+      provider_type  ? `Provider type: ${provider_type.replace(/_/g, ' ')}` : null,
+      last_seen      ? `Last session: ${last_seen}` : null,
+      current_state  ? `Current state: ${current_state.replace(/_/g, ' ')}` : null,
+    ].filter(Boolean).join('\n');
+
+    const messages = [{
+      role: 'user',
+      content: `Provider: ${provider_name || provider_type || 'therapist'}.
+${profileParts}
+
+Return JSON:
+{
+  "what_to_bring": ["string — 1 to 3 practical items if relevant, e.g. journal, notes"],
+  "themes_to_raise": ["string — 2 to 4 themes worth raising based on context"],
+  "questions_to_consider": ["string — 3 questions to sit with before the session"],
+  "between_sessions_note": "string or null — one practical thing to do between sessions"
+}`,
+    }];
+
+    const raw = await this.send({ system, messages, maxTokens: 500, model: MODEL_RICH });
+    return safeParseJSON(raw);
+  },
+
+  // ---------------------------------------------------------------------------
+  // getReflectingPoolResponse — soft cascade for the reflecting pool domain
+  //
+  // The reflecting pool is a guided conversation. The AI is a space, not a
+  // performer. It receives what the user gives, reads for weight, asks the one
+  // question earned by what was just said.
+  //
+  // Returns:
+  //   { response: string, close_session: boolean, floor_triggered: boolean }
+  //
+  // Parameters:
+  //   messages      — full exchange history (role/content pairs)
+  //   shapeContext  — lightweight SHAPE handoff string
+  //   world         — user's current world (tone calibration)
+  //   exchangeCount — number of AI responses sent so far this session
+  // ---------------------------------------------------------------------------
+
+  async getReflectingPoolResponse({ messages, shapeContext, world, exchangeCount }) {
+    const worldToneMap = {
+      operator: 'Direct, unhurried, grounded. No warmth performance. Receives without managing.',
+      range:    'Steady, practical, calm. Field-tested patience. No rush.',
+      garden:   'Gentle, attentive, unhurried. Spacious. Lets things breathe.',
+      journey:  'Open, curious, present. Meets the person wherever they are.',
+      playbook: 'Clear, focused, purposeful. No unnecessary words.',
+      summit:   'Measured, honest, present. Respects the difficulty.',
+      practice: 'Quiet, steady, non-judgmental. Receives without agenda.',
+      meadow:   'Warm, unhurried, gentle. A soft place to land.',
+    };
+
+    const tone = worldToneMap[world] || worldToneMap.operator;
+    const turnCount = messages.filter(m => m.role === 'assistant').length;
+
+    const system = `You are the reflecting pool inside a personal life app called Your Life / Unlocked.
+
+Your role in this space: receptive, not characterful. You are a room, not a voice. The user speaks. You listen. You respond once — with one question, or with a quiet close when the session has done its work.
+
+TONE FOR THIS USER: ${tone}
+
+WHAT YOU KNOW WALKING IN (SHAPE context — do not surface this directly):
+${shapeContext || 'No SHAPE context available this session.'}
+
+THE RULES YOU NEVER BREAK:
+1. One question per response. Never two. Never zero (unless closing).
+2. The question is earned by what was just said — not by what you want to know.
+3. Read for weight. The significant detail is often the aside, the clause after the comma. Return to it.
+4. Never lead. Follow where the user goes. If they approach the real thing sideways, go sideways with them.
+5. Never elaborate after asking. Ask. Stop.
+6. Do not perform warmth. Do not reassure. Do not manage. Receive.
+7. The intelligence requirement is internal. The user never feels a hand on the wheel.
+
+WHEN TO CLOSE:
+- The thing got named. There is a natural resting point.
+- The user signals done (short final message, thanks, sign-off).
+- The exchange has reached depth and adding more would extract rather than tend.
+- You have responded ${Math.max(4, 6 - exchangeCount)} or more times and a natural resting point exists.
+When closing: one warm sentence, no summary, no homework. A quiet landing.
+NEVER say "I'll pass this along", "I'll note that", "this will be reflected", or imply the app will act on what was said. The pool receives. It does not promise. What the user puts here shapes the intelligence over time — but that happens invisibly, not through explicit confirmation.
+
+THE FLOOR:
+If the user discloses suicidal ideation, intent to harm others, or active criminal activity:
+- Stop collecting immediately.
+- Respond with genuine care, no alarm.
+- Name what you heard briefly and directly.
+- Point toward appropriate support: crisis line, trusted person, emergency services if urgent.
+- Set floor_triggered: true.
+Crisis resources (Canada): Crisis Services Canada 1-833-456-4566. Text 45645. Kids Help Phone 1-800-668-6868.
+Crisis resources (US): 988 Suicide and Crisis Lifeline — call or text 988.
+
+RESPONSE FORMAT:
+Return ONLY valid JSON. No preamble, no markdown fences.
+{
+  "response": "your response here — the question, or the close, or the floor redirect",
+  "close_session": false,
+  "floor_triggered": false
+}
+
+RESPONSE LENGTH:
+- Normal exchange: 1–3 sentences max, then the question. The question is the last thing.
+- Close: 1 sentence. Warm. No summary.
+- Floor: 2–3 sentences. Clear. Caring. Immediate.`;
+
+    const raw = await this.send({ system, messages, maxTokens: 300, model: MODEL_RICH });
+
+    const clean = raw.replace(/```json|```/g, '').trim();
+    try {
+      return JSON.parse(clean);
+    } catch {
+      return {
+        response: raw.trim() || 'I\'m here.',
+        close_session: false,
+        floor_triggered: false,
+      };
+    }
   },
 };

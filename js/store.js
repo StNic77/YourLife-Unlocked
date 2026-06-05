@@ -21,6 +21,7 @@ const defaults = {
   maintenance: [],
   calendar: [],
   health: {},           // single object — Medical, Physical, Mental sub-domains written here
+  reflecting_pool: [],  // array of sessions — each session has exchanges[], SHAPE reads the full array
 
   user: {
     name: null,

@@ -5,10 +5,12 @@ import {
   saveMedicalIntake,
   savePhysicalIntake,
   saveMentalIntake,
+  markAppointmentKept,
   getApplicableScreenings,
   computeProviderNextDue,
   computeNextDue,
 } from './health.js';
+import { syncBirthdaySignals, retireBirthdaySignal } from './atak.js';
 
 // ---------------------------------------------------------------------------
 // CASCADE MODULE
@@ -295,10 +297,18 @@ export function createCascade({ item, onBack, onComplete }) {
         row.addEventListener('mouseenter', () => row.style.background = 'rgba(240,235,218,0.02)');
         row.addEventListener('mouseleave', () => row.style.background = 'transparent');
       });
+      // Remove person button
+      const removeBtn = el.querySelector('.person-remove-btn');
+      if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+          removePerson(removeBtn.dataset.personId);
+          close();
+          onComplete?.();
+        });
+      }
+
       return;
     }
-
-    // Maintenance detail — tap-to-edit + mark done + delete
     if (cascade.type === 'maintenance_detail') {
       el.querySelectorAll('.task-editable-line').forEach(row => {
         row.addEventListener('click', () => {
@@ -1526,13 +1536,33 @@ const medicalAppointmentRenderer = {
   async buildRoute(route, context) {
     const loadingId = `cascade-route-${Date.now()}`;
 
+    const health  = store.get('health') || {};
+    const medical = health.medical || {};
+    const user    = store.get('user') || {};
+
+    let age = null;
+    if (user.birth_year) age = new Date().getFullYear() - user.birth_year;
+
+    const today = new Date();
+    const screenings_due = (medical.screenings || [])
+      .filter(s => !s.skipped && s.next_due)
+      .filter(s => Math.ceil((new Date(s.next_due) - today) / 86400000) <= 60)
+      .map(s => s.label);
+
     const dataPromise = api.getMedicalCascade({
       route,
       appointment_type: context.appointment_type || 'general',
       provider_name:    context.provider_name    || null,
       provider_phone:   context.provider_phone   || null,
       provider_url:     context.provider_url     || null,
-      province:         context.province         || store.get('user')?.province || null,
+      province:         context.province         || user.province || null,
+      age,
+      sex:              medical.sex_assigned_at_birth || null,
+      conditions:       (medical.conditions  || []).map(c => c.label || c.id),
+      medications:      medical.medications  || [],
+      screenings_due,
+      last_seen:        context.last_seen    || null,
+      next_due:         context.next_due     || null,
     });
 
     setTimeout(async () => {
@@ -1551,13 +1581,16 @@ const medicalAppointmentRenderer = {
   },
 
   complete(context, route, update) {
-    // Update last_visit date for this appointment type
-    const health = store.get('health') || {};
-    health[context.appointment_type || 'general'] = {
-      last_visit: new Date().toISOString().split('T')[0],
-      provider:   context.provider_name || null,
-    };
-    store.set('health', health);
+    const { signal_type, signal_ref, interval_days, recurrence_days } = context;
+    if (signal_type && signal_ref) {
+      const interval = parseInt(interval_days || recurrence_days || 0, 10);
+      const nextDue  = interval ? (() => {
+        const d = new Date();
+        d.setDate(d.getDate() + interval);
+        return d.toISOString().slice(0, 10);
+      })() : null;
+      markAppointmentKept(signal_type, signal_ref, nextDue);
+    }
     logCascadeComplete('medical_appointment', context.appointment_type, route);
   },
 };
@@ -1573,15 +1606,19 @@ function buildMedicalRouteHTML(route, data, context) {
     sections.push(buildDetailRow('Provider', name));
     if (data.provider_address) sections.push(buildDetailRow('Address', data.provider_address));
     if (data.provider_hours)   sections.push(buildDetailRow('Hours', data.provider_hours, { dim: true }));
-    sections.push(buildDetailRow('What to mention', data.what_to_mention || `Annual physical · last visit ${data.last_visit_label || 'on file'}`));
+    if (data.what_to_bring?.length)          sections.push(buildDetailRow('What to bring', data.what_to_bring.join('<br>')));
+    if (data.what_to_mention)                sections.push(buildDetailRow('What to mention', data.what_to_mention));
+    if (data.prep_notes)                     sections.push(buildDetailRow('Preparation', data.prep_notes));
+    if (data.questions_to_ask?.length)       sections.push(buildDetailRow('Questions to ask', data.questions_to_ask.map((q, i) => `${i + 1}. ${q}`).join('<br>')));
+    if (data.screenings_to_request?.length)  sections.push(buildDetailRow('Screenings to request', data.screenings_to_request.join('<br>')));
 
-    const callBtn = phone ? buildActionButton('Call', { primary: true, class: 'cascade-call', dataAttrs: `data-phone="${phone}"` }) : '';
+    const callBtn = phone ? buildActionButton('Call', { primary: true,  class: 'cascade-call', dataAttrs: `data-phone="${phone}"` }) : '';
     const bookBtn = url   ? buildActionButton('Book Online', { primary: !phone, class: 'cascade-link', dataAttrs: `data-url="${url}"` }) : '';
 
     return sections.join('') + `
       <div style="margin-top:24px;display:flex;flex-wrap:wrap;">
         ${callBtn}${bookBtn}
-        ${buildDoneButton('Mark booked')}
+        ${buildDoneButton('Mark kept')}
       </div>
     `;
   }
@@ -1589,21 +1626,21 @@ function buildMedicalRouteHTML(route, data, context) {
   if (route === 'find') {
     if (data.clinic_name) {
       sections.push(buildDetailRow('Nearest clinic', `${data.clinic_name}<br><span style="color:rgba(240,235,218,0.4);font-size:12px;">${data.clinic_address || ''}</span>`));
-      if (data.clinic_hours)    sections.push(buildDetailRow('Hours', data.clinic_hours, { dim: true }));
-      if (data.clinic_phone)    sections.push(buildDetailRow('Phone', data.clinic_phone, { dim: true }));
-      if (data.accepting_note)  sections.push(buildDetailRow('New patients', data.accepting_note, { dim: true }));
+      if (data.clinic_hours)   sections.push(buildDetailRow('Hours',       data.clinic_hours,   { dim: true }));
+      if (data.clinic_phone)   sections.push(buildDetailRow('Phone',       data.clinic_phone,   { dim: true }));
+      if (data.accepting_note) sections.push(buildDetailRow('New patients',data.accepting_note, { dim: true }));
     } else {
-      sections.push(buildDetailRow('Find a clinic', data.search_note || 'Search for walk-in clinics or family practices accepting new patients in your area'));
+      sections.push(buildDetailRow('Find a clinic', data.search_note || 'Search for walk-in clinics or family practices accepting new patients'));
     }
+    if (data.what_to_bring?.length)         sections.push(buildDetailRow('What to bring',        data.what_to_bring.join('<br>')));
+    if (data.what_to_mention)               sections.push(buildDetailRow('What to mention',       data.what_to_mention));
+    if (data.questions_to_ask?.length)      sections.push(buildDetailRow('Questions to ask',      data.questions_to_ask.map((q, i) => `${i + 1}. ${q}`).join('<br>')));
+    if (data.screenings_to_request?.length) sections.push(buildDetailRow('Screenings to request', data.screenings_to_request.join('<br>')));
 
     const searchQuery = encodeURIComponent(data.search_query || 'walk-in clinic near me');
-    const dirBtn   = data.clinic_address ? buildActionButton('Directions', { class: 'cascade-directions', dataAttrs: `data-address="${data.clinic_address}"` }) : '';
-    const callBtn  = data.clinic_phone   ? buildActionButton('Call', { class: 'cascade-call', dataAttrs: `data-phone="${data.clinic_phone}"` }) : '';
-    const searchBtn = buildActionButton('Search Clinics', {
-      primary: !data.clinic_name,
-      class: 'cascade-link',
-      dataAttrs: `data-url="https://www.google.com/maps/search/${searchQuery}"`,
-    });
+    const dirBtn    = data.clinic_address ? buildActionButton('Directions',     { class: 'cascade-directions', dataAttrs: `data-address="${data.clinic_address}"` }) : '';
+    const callBtn   = data.clinic_phone   ? buildActionButton('Call',           { class: 'cascade-call',       dataAttrs: `data-phone="${data.clinic_phone}"` })   : '';
+    const searchBtn = buildActionButton('Search Clinics', { primary: !data.clinic_name, class: 'cascade-link', dataAttrs: `data-url="https://www.google.com/maps/search/${searchQuery}"` });
 
     return sections.join('') + `
       <div style="margin-top:24px;display:flex;flex-wrap:wrap;">
@@ -3451,6 +3488,21 @@ function buildPersonDetailHTML(person, personType, personId) {
     <div style="margin-bottom:8px;">
       ${lines.join('')}
     </div>
+    <div style="margin-top:20px;padding-top:16px;border-top:0.5px solid rgba(240,235,218,0.06);">
+      <button
+        class="person-remove-btn"
+        data-person-id="${personId}"
+        style="
+          font-family:var(--font-sans);font-weight:200;
+          font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+          color:rgba(240,235,218,0.18);cursor:pointer;
+          background:none;border:none;padding:4px 0;
+          transition:color 0.15s ease;
+        "
+        onmouseenter="this.style.color='rgba(200,80,60,0.7)'"
+        onmouseleave="this.style.color='rgba(240,235,218,0.18)'"
+      >Remove ${isPartner ? 'partner' : 'person'}</button>
+    </div>
   `;
 }
 
@@ -4824,6 +4876,163 @@ function _prePopulateHealthState(s) {
 }
 
 // ---------------------------------------------------------------------------
+// PHYSICAL ADVICE — Personalised training and nutrition guidance
+// Routes: 'training' | 'nutrition'
+// ---------------------------------------------------------------------------
+
+const physicalAdviceRenderer = {
+  async resolve(context, preference) {
+    const routes = [
+      { id: 'training',  label: 'Training',  description: 'Personalised workout guidance' },
+      { id: 'nutrition', label: 'Nutrition', description: 'Eating and fuelling advice'    },
+    ];
+    const route = preference && routes.find(r => r.id === preference) ? preference : 'training';
+    return { routes, route };
+  },
+
+  async buildRoute(route, context) {
+    const loadingId = `cascade-route-${Date.now()}`;
+
+    const dataPromise = api.getPhysicalAdvice({
+      route,
+      activity_level: context.activity_level || null,
+      goals:          context.goals          || [],
+      limitations:    context.limitations    || [],
+      workout_note:   context.workout_note   || null,
+    });
+
+    setTimeout(async () => {
+      try {
+        const data  = await dataPromise;
+        const inner = document.getElementById(loadingId);
+        if (inner) inner.innerHTML = buildPhysicalAdviceHTML(route, data, context);
+        attachDynamicListeners();
+      } catch {
+        const inner = document.getElementById(loadingId);
+        if (inner) inner.innerHTML = buildErrorHTML();
+      }
+    }, 0);
+
+    return `<div id="${loadingId}">${buildLoadingHTML('Personalising your guidance…')}</div>`;
+  },
+
+  complete(context, route, update) {
+    logCascadeComplete('physical_advice', route, route);
+  },
+};
+
+function buildPhysicalAdviceHTML(route, data, context) {
+  const sections = [];
+
+  if (route === 'training') {
+    if (data.summary)              sections.push(buildDetailRow('Your picture', data.summary));
+    if (data.weekly_structure)     sections.push(buildDetailRow('Weekly structure', data.weekly_structure));
+    if (data.recommended_types?.length) sections.push(buildDetailRow('Recommended', data.recommended_types.join('<br>')));
+    if (data.intensity_guidance)   sections.push(buildDetailRow('Intensity', data.intensity_guidance));
+    if (data.limitations_note)     sections.push(buildDetailRow('Given your limitations', data.limitations_note));
+    if (data.progression_tip)      sections.push(buildDetailRow('To progress', data.progression_tip));
+  }
+
+  if (route === 'nutrition') {
+    if (data.summary)              sections.push(buildDetailRow('Your picture', data.summary));
+    if (data.eating_pattern)       sections.push(buildDetailRow('Eating pattern', data.eating_pattern));
+    if (data.goal_alignment?.length) sections.push(buildDetailRow('For your goals', data.goal_alignment.join('<br>')));
+    if (data.foods_to_prioritise?.length) sections.push(buildDetailRow('Prioritise', data.foods_to_prioritise.join('<br>')));
+    if (data.timing_note)          sections.push(buildDetailRow('Timing', data.timing_note));
+    if (data.limitations_note)     sections.push(buildDetailRow('Given your limitations', data.limitations_note));
+  }
+
+  if (!sections.length) return buildErrorHTML();
+
+  return sections.join('') + `
+    <div style="margin-top:24px;">
+      ${buildDoneButton('Got it')}
+    </div>
+  `;
+}
+
+
+// ---------------------------------------------------------------------------
+// WELL-BEING SESSION — Therapy/counselling session prep
+// Single route — prepares the user for their next session
+// ---------------------------------------------------------------------------
+
+const wellbeingSessionRenderer = {
+  async resolve(context, preference) {
+    return { routes: [], route: 'prep' };
+  },
+
+  async buildRoute(route, context) {
+    const loadingId = `cascade-route-${Date.now()}`;
+
+    const dataPromise = api.getWellbeingSessionPrep({
+      provider_name: context.provider_name || null,
+      provider_type: context.provider_type || null,
+      last_seen:     context.last_seen     || null,
+      current_state: context.current_state || null,
+    });
+
+    setTimeout(async () => {
+      try {
+        const data  = await dataPromise;
+        const inner = document.getElementById(loadingId);
+        if (inner) inner.innerHTML = buildWellbeingSessionHTML(data, context);
+        attachDynamicListeners();
+      } catch {
+        const inner = document.getElementById(loadingId);
+        if (inner) inner.innerHTML = buildErrorHTML();
+      }
+    }, 0);
+
+    return `<div id="${loadingId}">${buildLoadingHTML('Preparing your session…')}</div>`;
+  },
+
+  complete(context, route, update) {
+    logCascadeComplete('wellbeing_session', 'prep', 'prep');
+  },
+};
+
+function buildWellbeingSessionHTML(data, context) {
+  const sections = [];
+  const providerLabel = context.provider_name || (context.provider_type ? context.provider_type.replace(/_/g, ' ') : 'Your session');
+
+  sections.push(buildDetailRow('With', providerLabel));
+  if (data.what_to_bring?.length)      sections.push(buildDetailRow('What to bring',    data.what_to_bring.join('<br>')));
+  if (data.themes_to_raise?.length)    sections.push(buildDetailRow('Themes to raise',  data.themes_to_raise.join('<br>')));
+  if (data.questions_to_consider?.length) sections.push(buildDetailRow('Questions to consider', data.questions_to_consider.map((q, i) => `${i + 1}. ${q}`).join('<br>')));
+  if (data.between_sessions_note)      sections.push(buildDetailRow('Between sessions', data.between_sessions_note));
+
+  if (!sections.length) return buildErrorHTML();
+
+  return sections.join('') + `
+    <div style="margin-top:24px;">
+      ${buildDoneButton('Got it')}
+    </div>
+  `;
+}
+
+
+// ---------------------------------------------------------------------------
+// PERSON REMOVAL
+// Removes a team member from store and retires their birthday signal.
+// ---------------------------------------------------------------------------
+
+function removePerson(personId) {
+  const team = store.get('team') || {};
+  if (personId === 'partner') {
+    retireBirthdaySignal('sig_birthday_partner');
+    team.partner = {};
+  } else if (personId.startsWith('child_')) {
+    const idx = parseInt(personId.replace('child_', ''), 10);
+    retireBirthdaySignal(`sig_birthday_child_${idx}`);
+    team.children = (team.children || []).filter((_, i) => i !== idx);
+    syncBirthdaySignals();
+  }
+  store.set('team', team);
+}
+
+
+// ---------------------------------------------------------------------------
 // RENDERER REGISTRY
 // ---------------------------------------------------------------------------
 
@@ -4831,6 +5040,8 @@ const RENDERERS = {
   vehicle_registration: vehicleRegistrationRenderer,
   vehicle_service:      vehicleServiceRenderer,
   medical_appointment:  medicalAppointmentRenderer,
+  physical_advice:      physicalAdviceRenderer,
+  wellbeing_session:    wellbeingSessionRenderer,
   vehicle_intake:       vehicleIntakeRenderer,
   vehicle_detail:       vehicleDetailRenderer,
   maintenance_task:     maintenanceTaskRenderer,

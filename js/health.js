@@ -133,12 +133,23 @@ export function getHealthBrief() {
     const hasUrgent = sd.lines.some(l => l.urgent);
     const uid       = `hsd-${sd.sub_domain}`;
 
-    const linesHTML = sd.lines.map(line => `
-      <div style="
-        padding:10px 0;
-        border-bottom:0.5px solid rgba(240,235,218,0.05);
-        display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
-      ">
+    const linesHTML = sd.lines.map(line => {
+      const hasTap = !!line.action;
+      const contextAttr = hasTap
+        ? `data-health-action="${line.action}" data-health-context='${JSON.stringify(line.action_context || {})}'`
+        : '';
+      return `
+      <div
+        ${contextAttr}
+        class="${hasTap ? 'health-action-line' : ''}"
+        style="
+          padding:10px 0;
+          border-bottom:0.5px solid rgba(240,235,218,0.05);
+          display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
+          ${hasTap ? 'cursor:pointer;' : ''}
+        "
+        ${hasTap ? `onmouseenter="this.style.background='rgba(240,235,218,0.02)'" onmouseleave="this.style.background=''"` : ''}
+      >
         <div style="
           font-family:var(--font-sans);font-weight:200;
           font-size:12px;letter-spacing:0.03em;
@@ -150,9 +161,10 @@ export function getHealthBrief() {
           font-size:12px;letter-spacing:0.02em;
           color:${line.urgent ? 'rgba(210,160,60,0.9)' : 'rgba(240,235,218,0.65)'};
           text-align:right;
+          ${hasTap ? 'text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(240,235,218,0.15);' : ''}
         ">${line.value || ''}</div>
       </div>
-    `).join('');
+    `}).join('');
 
     return {
       custom_html: `
@@ -237,6 +249,17 @@ function _buildMedicalLines(medical) {
       label:  pc.name,
       value:  pcLine.text,
       urgent: pcLine.urgent,
+      action: 'medical_appointment',
+      action_context: {
+        appointment_type: 'annual_physical',
+        provider_name:    pc.name,
+        provider_phone:   pc.phone       || null,
+        provider_url:     pc.booking_url || null,
+        signal_ref:       'primary',
+        signal_type:      'annual_physical',
+        last_seen:        pc.last_seen   || null,
+        next_due:         pc.next_due    || null,
+      },
     });
   }
 
@@ -244,19 +267,47 @@ function _buildMedicalLines(medical) {
   (medical.providers || []).forEach(p => {
     if (!p.name && !p.type) return;
     const label = p.name || p.type;
-    if (p.next_due) {
-      const status = _dateStatusLine(label, p.next_due, today);
-      lines.push({ label, value: status.text, urgent: status.urgent });
-    } else {
-      lines.push({ label, value: 'No appointment on file', urgent: false });
-    }
+    const status = p.next_due ? _dateStatusLine(label, p.next_due, today) : null;
+    lines.push({
+      label,
+      value:  status ? status.text : 'No appointment on file',
+      urgent: status ? status.urgent : false,
+      action: 'medical_appointment',
+      action_context: {
+        appointment_type: p.type          || 'specialist',
+        provider_name:    p.name          || null,
+        provider_type:    _providerTypeLabel(p.type),
+        provider_phone:   p.phone         || null,
+        provider_url:     p.booking_url   || null,
+        signal_ref:       p.id,
+        signal_type:      'provider',
+        last_seen:        p.last_seen     || null,
+        next_due:         p.next_due      || null,
+        interval_days:    p.interval_days || null,
+      },
+    });
   });
 
   // Screenings — only surface ones that are due or coming up
   (medical.screenings || []).filter(s => !s.skipped && s.next_due).forEach(s => {
     const status = _dateStatusLine(s.label, s.next_due, today);
     if (status.days <= HEALTH_SIGNAL_CAUTION_DAYS) {
-      lines.push({ label: s.label, value: status.text, urgent: status.urgent });
+      lines.push({
+        label:  s.label,
+        value:  status.text,
+        urgent: status.urgent,
+        action: 'medical_appointment',
+        action_context: {
+          appointment_type: 'screening',
+          screening_id:     s.id,
+          screening_label:  s.label,
+          signal_ref:       s.id,
+          signal_type:      'screening',
+          last_done:        s.last_done      || null,
+          next_due:         s.next_due       || null,
+          recurrence_days:  s.recurrence_days || null,
+        },
+      });
     }
   });
 
@@ -288,11 +339,21 @@ function _buildPhysicalLines(physical) {
   const lines = [];
   if (!physical.complete) return lines;
 
+  // Build the shared action context once — all physical lines open the same cascade
+  const physicalContext = {
+    activity_level: physical.activity_level || null,
+    goals:          physical.goals          || [],
+    limitations:    physical.limitations    || [],
+    workout_note:   physical.workout_note   || null,
+  };
+
   if (physical.activity_level) {
     lines.push({
       label:  'Activity',
       value:  _activityLabel(physical.activity_level),
       urgent: false,
+      action: 'physical_advice',
+      action_context: physicalContext,
     });
   }
   if ((physical.goals || []).length) {
@@ -300,6 +361,8 @@ function _buildPhysicalLines(physical) {
       label:  'Goals',
       value:  physical.goals.slice(0, 2).map(_goalLabel).join(', '),
       urgent: false,
+      action: 'physical_advice',
+      action_context: physicalContext,
     });
   }
   if ((physical.limitations || []).length) {
@@ -307,6 +370,8 @@ function _buildPhysicalLines(physical) {
       label:  'Limitations on file',
       value:  `${physical.limitations.length} noted`,
       urgent: false,
+      action: 'physical_advice',
+      action_context: physicalContext,
     });
   }
   return lines;
@@ -318,11 +383,21 @@ function _buildMentalLines(mental) {
   const lines = [];
   if (!mental.complete) return lines;
 
+  const wellbeingContext = {
+    current_state: mental.current_state  || null,
+    has_provider:  mental.has_provider   || false,
+    provider_name: mental.provider_name  || null,
+    provider_type: mental.provider_type  || null,
+    last_seen:     mental.last_seen      || null,
+  };
+
   if (mental.current_state && mental.current_state !== 'prefer_not_to_say') {
     lines.push({
       label:  'How you\'re doing',
       value:  _mentalStateLabel(mental.current_state),
       urgent: mental.current_state === 'hard_season',
+      action: 'wellbeing_action',
+      action_context: wellbeingContext,
     });
   }
   if (mental.has_provider && mental.provider_name) {
@@ -333,6 +408,8 @@ function _buildMentalLines(mental) {
       label:  mental.provider_name,
       value:  providerLine,
       urgent: false,
+      action: 'wellbeing_action',
+      action_context: wellbeingContext,
     });
   }
   return lines;
@@ -700,6 +777,15 @@ export function markAppointmentKept(type, ref, nextDueISO) {
 // ---------------------------------------------------------------------------
 // LABEL HELPERS — display strings, not business logic
 // ---------------------------------------------------------------------------
+
+function _providerTypeLabel(type) {
+  return {
+    dentist:    'Dentist',
+    eye_care:   'Eye care',
+    skin:       'Dermatologist',
+    specialist: 'Specialist',
+  }[type] || (type ? type.replace(/_/g, ' ') : 'Provider');
+}
 
 function _activityLabel(level) {
   return {

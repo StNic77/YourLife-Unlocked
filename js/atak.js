@@ -169,6 +169,113 @@ export function dismissItem(itemId) {
   store.set('urgent_items', stored.filter(i => i.id !== itemId));
 }
 
+// ---------------------------------------------------------------------------
+// BIRTHDAY SIGNAL SYNC
+//
+// Writes birthday signals to store.calendar for the full 365-day forward view.
+// Called on app load, after team member added/edited, and on team member removal.
+//
+// Birthday signals use a recurring annual date — the next upcoming occurrence
+// of the birthday, not the birth year. Signal ID is deterministic so the same
+// person never produces two signals.
+//
+// ATAK still surfaces birthdays as urgent items within 14 days (getUrgentItems).
+// The calendar signal is the long-range view — visible 12 months out.
+// ---------------------------------------------------------------------------
+
+function _nextBirthdayISO(birthdayStr) {
+  // birthdayStr may be "Month Day" (e.g. "June 15") or include a year ("June 15, 1985")
+  if (!birthdayStr) return null;
+  try {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+
+    // Parse month and day — strip year if present
+    const cleaned = birthdayStr.replace(/,?\s*(19|20)\d{2}/, '').trim();
+    const attempt = new Date(`${cleaned} ${currentYear}`);
+    if (isNaN(attempt.getTime())) return null;
+
+    // If this year's birthday has passed, use next year
+    const candidate = new Date(attempt);
+    if (candidate < today) {
+      candidate.setFullYear(currentYear + 1);
+    }
+    return candidate.toISOString().slice(0, 10);
+  } catch { return null; }
+}
+
+function _writeBirthdaySignal(id, name, birthdayStr) {
+  const nextISO = _nextBirthdayISO(birthdayStr);
+  if (!nextISO) return;
+
+  const today = new Date();
+  const date  = new Date(nextISO);
+  const days  = Math.ceil((date - today) / (1000 * 60 * 60 * 24));
+
+  // Only write if within the 365-day window
+  if (days > 365 || days < 0) return;
+
+  const pressure = days <= 7 ? 'warning' : days <= 30 ? 'caution' : 'info';
+
+  let calendar = store.get('calendar') || [];
+  calendar = calendar.filter(e => e.id !== id);
+
+  calendar.push({
+    id,
+    type:        'domain_signal',
+    title:       `${name}'s birthday`,
+    date:        nextISO,
+    time_start:  null,
+    time_end:    null,
+    all_day:     true,
+    source:      'domain',
+    domain:      'team',
+    domain_ref:  id,
+    signal_type: 'birthday',
+    pressure,
+    created_at:  new Date().toISOString(),
+    expires_at:  null,
+  });
+
+  store.set('calendar', calendar);
+}
+
+// Sync all birthday signals from current store.team.
+// Call on app load and after any team member add/edit.
+export function syncBirthdaySignals() {
+  const team = store.get('team') || {};
+
+  // Retire any signals for people who no longer exist, then re-sync
+  const validIds = new Set();
+
+  if (team.partner?.birthday) {
+    const id = 'sig_birthday_partner';
+    validIds.add(id);
+    _writeBirthdaySignal(id, team.partner.name || 'Partner', team.partner.birthday);
+  }
+
+  (team.children || []).forEach((child, idx) => {
+    if (!child.birthday) return;
+    const id = `sig_birthday_child_${idx}`;
+    validIds.add(id);
+    _writeBirthdaySignal(id, child.name || 'Child', child.birthday);
+  });
+
+  // Retire signals for removed team members
+  const calendar = store.get('calendar') || [];
+  store.set('calendar', calendar.filter(e => {
+    if (e.domain !== 'team' || e.signal_type !== 'birthday') return true;
+    return validIds.has(e.id);
+  }));
+}
+
+// Retire the birthday signal for a specific person.
+// Call immediately when a team member is removed.
+export function retireBirthdaySignal(id) {
+  const calendar = store.get('calendar') || [];
+  store.set('calendar', calendar.filter(e => e.id !== id));
+}
+
 // Primary urgency scan — called by both the brief and the hotspot renderer.
 // Returns a flat array of urgent items ordered by priority.
 export function getUrgentItems() {
