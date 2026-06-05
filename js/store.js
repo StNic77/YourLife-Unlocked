@@ -8,6 +8,9 @@ const defaults = {
     situation: null,
     mission: [],
     service_support: [],
+    occupation_sector: null,  // 'military' | 'first_responder' | 'healthcare' | 'trades' | 'business' | 'professional' | 'student' | 'other'
+                              // Asked in onboarding redesign. Used by SHAPE for downstream inference.
+                              // SHAPE can also write this from pool signals if not set at onboarding.
   },
   // team is written by team.js after onboarding completes
   team: {

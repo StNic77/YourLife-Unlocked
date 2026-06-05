@@ -1,5 +1,6 @@
 import { store } from './store.js';
 import { isVehicleUrgent } from './vehicles.js';
+import { getShapeContext } from './shape.js';
 
 // ---------------------------------------------------------------------------
 // ATAK — Fused Intelligence Module
@@ -682,7 +683,7 @@ export function buildPrimaryBrief() {
     });
   }
 
-  return { title: 'Brief', sections, is_primary: true };
+  return { title: 'Brief', sections, is_primary: true, shape: getShapeContext() };
 }
 
 

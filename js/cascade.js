@@ -1536,9 +1536,11 @@ const medicalAppointmentRenderer = {
   async buildRoute(route, context) {
     const loadingId = `cascade-route-${Date.now()}`;
 
-    const health  = store.get('health') || {};
-    const medical = health.medical || {};
-    const user    = store.get('user') || {};
+    const health    = store.get('health')     || {};
+    const medical   = health.medical          || {};
+    const user      = store.get('user')       || {};
+    const onboard   = store.get('onboarding') || {};
+    const military  = store.get('military')   || {};
 
     let age = null;
     if (user.birth_year) age = new Date().getFullYear() - user.birth_year;
@@ -1549,20 +1551,36 @@ const medicalAppointmentRenderer = {
       .filter(s => Math.ceil((new Date(s.next_due) - today) / 86400000) <= 60)
       .map(s => s.label);
 
+    // Coverage and identity context — SHAPE may have written these from pool signals
+    const coverage_type      = health.health_coverage         || medical.coverage_type || null;
+    const has_bc_carecard    = health.has_bc_carecard         ?? null;
+    const primary_facility   = health.primary_medical_facility || null;
+    const occupation_sector  = onboard.occupation_sector       || null;
+    const caf_member         = military.caf_member             || (coverage_type === 'CAF') || false;
+    const caf_posting        = military.posting                || null;
+    const special_notes      = medical.special_notes           || null;
+
     const dataPromise = api.getMedicalCascade({
       route,
-      appointment_type: context.appointment_type || 'general',
-      provider_name:    context.provider_name    || null,
-      provider_phone:   context.provider_phone   || null,
-      provider_url:     context.provider_url     || null,
-      province:         context.province         || user.province || null,
+      appointment_type:      context.appointment_type || 'general',
+      provider_name:         context.provider_name    || null,
+      provider_phone:        context.provider_phone   || null,
+      provider_url:          context.provider_url     || null,
+      province:              context.province         || user.province || null,
       age,
-      sex:              medical.sex_assigned_at_birth || null,
-      conditions:       (medical.conditions  || []).map(c => c.label || c.id),
-      medications:      medical.medications  || [],
+      sex:                   medical.sex_assigned_at_birth || null,
+      conditions:            (medical.conditions  || []).map(c => c.label || c.id),
+      medications:           medical.medications  || [],
       screenings_due,
-      last_seen:        context.last_seen    || null,
-      next_due:         context.next_due     || null,
+      last_seen:             context.last_seen    || null,
+      next_due:              context.next_due     || null,
+      coverage_type,
+      has_bc_carecard,
+      primary_facility,
+      occupation_sector,
+      caf_member,
+      caf_posting,
+      special_notes,
     });
 
     setTimeout(async () => {
@@ -1571,6 +1589,9 @@ const medicalAppointmentRenderer = {
         const inner = document.getElementById(loadingId);
         if (inner) inner.innerHTML = buildMedicalRouteHTML(route, data, context);
         attachDynamicListeners();
+
+        // Write back anything the AI resolved that we didn't already know
+        _writeMedicalResolved(data, context, route);
       } catch (err) {
         const inner = document.getElementById(loadingId);
         if (inner) inner.innerHTML = buildErrorHTML();
@@ -1595,6 +1616,71 @@ const medicalAppointmentRenderer = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Write resolved medical data back to store.health.medical
+// Called after the AI returns data — persists anything new so next cascade
+// open is pre-populated. Provider name/phone resolved by AI, special notes
+// typed by user.
+// ---------------------------------------------------------------------------
+function buildSpecialNotesInput() {
+  const existing = store.get('health')?.medical?.special_notes || '';
+  return `
+    <div style="margin-top:16px;">
+      <div style="font-size:11px;letter-spacing:0.08em;color:rgba(240,235,218,0.4);margin-bottom:6px;text-transform:uppercase;">Special notes for this visit</div>
+      <textarea
+        id="medical-special-notes"
+        placeholder="Anything the provider needs to know — facility requirements, access needs, things to bring…"
+        style="
+          width:100%;box-sizing:border-box;
+          background:rgba(240,235,218,0.05);
+          border:1px solid rgba(240,235,218,0.12);
+          border-radius:6px;
+          color:rgba(240,235,218,0.85);
+          font-size:13px;
+          font-family:inherit;
+          padding:10px 12px;
+          resize:none;
+          min-height:64px;
+          outline:none;
+        "
+        oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"
+        onblur="_saveMedicalSpecialNotesFromUI(this.value)"
+      >${existing}</textarea>
+    </div>
+  `;
+}
+
+function _saveMedicalSpecialNotesFromUI(value) {
+  _saveMedicalSpecialNotes(value);
+}
+
+function _writeMedicalResolved(data, context, route) {
+  const health  = store.get('health') || {};
+  const medical = { ...(health.medical || {}) };
+  let changed = false;
+
+  // If AI resolved a provider we didn't have, write it back to the primary care slot
+  if (route === 'find' && data.clinic_name && !medical.pc) {
+    medical.pc = medical.pc || {};
+    if (!medical.pc.name && data.clinic_name) {
+      medical.pc = { ...medical.pc, name: data.clinic_name, phone: data.clinic_phone || null };
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    store.set('health', { ...health, medical });
+  }
+}
+
+// Save special notes typed in the cascade UI to health.medical.special_notes
+function _saveMedicalSpecialNotes(notes) {
+  if (!notes || !notes.trim()) return;
+  const health  = store.get('health') || {};
+  const medical = { ...(health.medical || {}), special_notes: notes.trim() };
+  store.set('health', { ...health, medical });
+}
+
 function buildMedicalRouteHTML(route, data, context) {
   const sections = [];
 
@@ -1616,6 +1702,7 @@ function buildMedicalRouteHTML(route, data, context) {
     const bookBtn = url   ? buildActionButton('Book Online', { primary: !phone, class: 'cascade-link', dataAttrs: `data-url="${url}"` }) : '';
 
     return sections.join('') + `
+      ${buildSpecialNotesInput()}
       <div style="margin-top:24px;display:flex;flex-wrap:wrap;">
         ${callBtn}${bookBtn}
         ${buildDoneButton('Mark kept')}
@@ -1643,6 +1730,7 @@ function buildMedicalRouteHTML(route, data, context) {
     const searchBtn = buildActionButton('Search Clinics', { primary: !data.clinic_name, class: 'cascade-link', dataAttrs: `data-url="https://www.google.com/maps/search/${searchQuery}"` });
 
     return sections.join('') + `
+      ${buildSpecialNotesInput()}
       <div style="margin-top:24px;display:flex;flex-wrap:wrap;">
         ${dirBtn}${callBtn}${searchBtn}
         ${buildDoneButton('Mark booked')}

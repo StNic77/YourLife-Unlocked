@@ -174,24 +174,48 @@ Return JSON with these fields (use null for unknown values):
   },
 
   async getMedicalCascade({ route, appointment_type, provider_name, provider_phone, provider_url, province,
-      age, sex, conditions, medications, screenings_due, last_seen, next_due }) {
+      age, sex, conditions, medications, screenings_due, last_seen, next_due,
+      coverage_type, has_bc_carecard, primary_facility, occupation_sector,
+      caf_member, caf_posting, special_notes }) {
+
+    // Coverage context block — injected into system prompt as a hard constraint
+    const coverageLines = [];
+    if (caf_member) {
+      coverageLines.push('IMPORTANT: This user is a Canadian Armed Forces (CAF) member.');
+      coverageLines.push('They do NOT have a provincial health card and do NOT use the provincial healthcare system for primary care.');
+      coverageLines.push('Do NOT suggest bringing a provincial health card (e.g. BC CareCard, OHIP card, etc.).');
+      coverageLines.push('Their healthcare is provided through DND/CAF medical and dental facilities.');
+      if (caf_posting) coverageLines.push(`Current posting: ${caf_posting}.`);
+      if (primary_facility) coverageLines.push(`Primary facility: ${primary_facility}.`);
+    } else if (coverage_type) {
+      coverageLines.push(`Coverage type: ${coverage_type}.`);
+      if (has_bc_carecard === false) coverageLines.push('User does not have a BC CareCard.');
+      if (primary_facility) coverageLines.push(`Primary facility: ${primary_facility}.`);
+    }
+    const coverageContext = coverageLines.length
+      ? `\n\nCOVERAGE CONTEXT (critical — governs what to bring and where to go):\n${coverageLines.join('\n')}`
+      : '';
+
     const system = `You are a health preparation assistant inside a personal life app.
 Return ONLY valid JSON. No preamble, no explanation, no markdown fences.
 You have knowledge of healthcare booking systems, preventive care guidelines, and appointment preparation in Canada and the US.
 Never fabricate specific clinic names, addresses, or phone numbers — use null and provide a search query instead.
 Provide accurate, age-appropriate, and personalised preparation guidance based on the patient profile provided.
 Health Intelligence Boundary: surface reminders and broadly accepted general guidance only. Never give medical advice, diagnoses, or medication commentary.
-Keep all text concise — displayed in a compact mobile interface.`;
+Keep all text concise — displayed in a compact mobile interface.${coverageContext}`;
 
     const apptDesc = appointment_type?.replace(/_/g, ' ') || 'general appointment';
     const patientProfile = [
       age  ? `Age: ${age}`  : null,
       sex  ? `Sex assigned at birth: ${sex}` : null,
+      occupation_sector ? `Occupation sector: ${occupation_sector}` : null,
+      caf_member        ? 'CAF member — DND/military healthcare system' : null,
       conditions?.length  ? `Conditions on file: ${conditions.join(', ')}` : null,
       medications?.length ? `Medications on file: ${medications.length} (names withheld)` : null,
       screenings_due?.length ? `Screenings due or overdue: ${screenings_due.join(', ')}` : null,
       last_seen ? `Last appointment: ${last_seen}` : null,
       next_due  ? `Next due: ${next_due}` : null,
+      special_notes ? `Special notes from patient: ${special_notes}` : null,
     ].filter(Boolean).join('\n');
 
     const messages = [{
@@ -571,6 +595,8 @@ THE RULES YOU NEVER BREAK:
 5. Never elaborate after asking. Ask. Stop.
 6. Do not perform warmth. Do not reassure. Do not manage. Receive.
 7. The intelligence requirement is internal. The user never feels a hand on the wheel.
+8. When the user states a fact about themselves — their job, their health coverage, their situation, anything — receive it and move on. Do NOT explain what the app can or cannot do with that information. Do NOT redirect them to settings or profiles. Do NOT tell them how to update their information. Simply acknowledge it if natural, then ask your one question. The app is listening. That is not the user's concern.
+8. When the user states a fact about themselves — their job, their health coverage, their situation, anything — receive it and move on. Do NOT explain what the app can or cannot do with that information. Do NOT redirect them to settings or profiles. Do NOT tell them how to update their information. Simply acknowledge it if natural, then ask your one question. The app is listening. That is not the user's concern.
 
 WHEN TO CLOSE:
 - The thing got named. There is a natural resting point.
@@ -615,5 +641,33 @@ RESPONSE LENGTH:
         floor_triggered: false,
       };
     }
+  },
+
+  // ---------------------------------------------------------------------------
+  // SHAPE — Pool Session Extraction
+  // Reads a closed reflecting pool session transcript and extracts two categories:
+  //   1. Factual corrections — writeable domain field updates
+  //   2. Context signals — patterns and load intelligence for the ATAK layer
+  // Returns parsed JSON: { factual_corrections: [], context_signals: [] }
+  // ---------------------------------------------------------------------------
+  async getShapeExtraction({ systemPrompt, transcript }) {
+    const messages = [
+      { role: 'user', content: `POOL SESSION TRANSCRIPT:\n\n${transcript}` },
+    ];
+    const raw = await this.send({ system: systemPrompt, messages, maxTokens: 1000, model: MODEL_RICH });
+    return safeParseJSON(raw);
+  },
+
+  // ---------------------------------------------------------------------------
+  // SHAPE — Interpreted Layer Rebuild
+  // Generates the interpreted paragraph from the full domain portrait.
+  // Returns plain text — 3–6 sentences describing the person right now.
+  // ---------------------------------------------------------------------------
+  async getShapeInterpreted({ systemPrompt, portrait }) {
+    const messages = [
+      { role: 'user', content: `PORTRAIT:\n${JSON.stringify(portrait, null, 2)}` },
+    ];
+    const raw = await this.send({ system: systemPrompt, messages, maxTokens: 400, model: MODEL_RICH });
+    return raw.trim();
   },
 };

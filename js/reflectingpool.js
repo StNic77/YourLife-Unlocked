@@ -1,5 +1,6 @@
 import { store } from './store.js';
 import { api } from './api.js';
+import { onPoolSessionClose, extractFactualCorrections } from './shape.js';
 
 // ---------------------------------------------------------------------------
 // REFLECTING POOL DOMAIN MODULE
@@ -286,6 +287,11 @@ export function createReflectingPoolPanel(container, onClose) {
   function handleClose() {
     if (!closed) {
       _closeSession(session);
+      // Only hand off to SHAPE if the session had at least one exchange
+      if (session.exchanges.length > 0) {
+        onPoolSessionClose(session).catch(() => {});
+      }
+      closed = true;
     }
     onClose?.();
   }
@@ -382,6 +388,9 @@ export function createReflectingPoolPanel(container, onClose) {
     session.exchanges.push(userExchange);
     _appendMessage('user', text);
 
+    // Per-exchange factual extraction — fires immediately, does not block the pool
+    extractFactualCorrections(text).catch(() => {});
+
     // Show thinking
     thinkingEl.style.display = 'block';
 
@@ -410,6 +419,7 @@ export function createReflectingPoolPanel(container, onClose) {
         _disableInput();
         _closeSession(session);
         closed = true;
+        onPoolSessionClose(session).catch(() => {});
         return;
       }
 
@@ -420,6 +430,7 @@ export function createReflectingPoolPanel(container, onClose) {
         _disableInput();
         _closeSession(session);
         closed = true;
+        onPoolSessionClose(session).catch(() => {});
         return;
       }
 

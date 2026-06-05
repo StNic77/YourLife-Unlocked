@@ -5,6 +5,7 @@ import { createOnboarding } from './onboarding.js';
 import { createTeam } from './team.js';
 import { createHome } from './home.js';
 import { createLocationRequest } from './location.js';
+import { initShape } from './shape.js';
 
 const app = document.getElementById('app');
 
@@ -409,6 +410,10 @@ async function boot() {
     `;
     return;
   }
+
+  // SHAPE — initialise after store is loaded, before any routing.
+  // Non-blocking: convergence check runs sync, interpreted layer rebuild is async.
+  initShape();
 
   // DEV PERSONAS — checked before returning-user logic
   // ?dev=single | ?dev=married | ?dev=blended
