@@ -35,6 +35,7 @@ import {
   createReflectingPoolPanel,
 } from './reflectingpool.js';
 import { syncBirthdaySignals } from './atak.js';
+import { createProfileEditor } from './profileeditor.js';
 
 // ---------------------------------------------------------------------------
 // DEV MODE — Hotspot visualiser
@@ -576,7 +577,7 @@ export function createHome(world) {
             font-size:9px;letter-spacing:0.35em;text-transform:uppercase;
             color:rgba(240,235,218,0.35);margin-bottom:12px;
           ">${section.heading}</div>
-          ${section.items.map(item => buildItemRow(item)).join('')}
+          ${section.items.map(item => item.custom_html ? item.custom_html : buildItemRow(item)).join('')}
         </div>
       `;
     }
@@ -588,7 +589,7 @@ export function createHome(world) {
       : section.collapsed !== false;  // default to section.collapsed value
 
     const chevron = isCollapsed ? '›' : '‹';
-    const itemsHTML = section.items.map(item => buildItemRow(item)).join('');
+    const itemsHTML = section.items.map(item => item.custom_html ? item.custom_html : buildItemRow(item)).join('');
 
     return `
       <div style="margin-bottom:28px;">
@@ -1250,6 +1251,11 @@ export function createHome(world) {
     };
 
     // Reflecting pool — full-screen conversation panel
+    const openProfileEditor = () => {
+      closeBrief();
+      createProfileEditor({ onClose: () => {} });
+    };
+
     const openReflectingPool = () => {
       closeBrief();
       const rpContainer = document.createElement('div');
@@ -1323,6 +1329,8 @@ export function createHome(world) {
           openHealthIntake();
         } else if (action === 'open_reflecting_pool') {
           openReflectingPool();
+        } else if (action === 'edit_profile') {
+          openProfileEditor();
         } else {
           console.log(`CTA action: ${action}`);
         }

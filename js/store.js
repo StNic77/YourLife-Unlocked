@@ -25,6 +25,8 @@ const defaults = {
   calendar: [],
   health: {},           // single object — Medical, Physical, Mental sub-domains written here
   reflecting_pool: [],  // array of sessions — each session has exchanges[], SHAPE reads the full array
+  military: {},         // CAF/service member data — written by SHAPE from pool signals
+  shape:    null,       // SHAPE intelligence store — raw layer + interpreted layer
 
   user: {
     name: null,
@@ -45,7 +47,8 @@ const defaults = {
     // Whether the home/away question has been answered
     location_confirmed: false,
 
-    joined: null,
+    joined:   null,
+    birthday: null,   // ISO date string e.g. '1985-03-15' — written by onboarding redesign or SHAPE from pool
   },
 };
 

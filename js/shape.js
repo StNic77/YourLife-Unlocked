@@ -244,7 +244,19 @@ ${JSON.stringify(existing, null, 2)}
 
 EXTRACT ONLY:
 Writeable facts that correct or extend existing domain data. Be conservative — only extract what is clearly and explicitly stated.
-Examples: health coverage type, military/CAF membership, moved city, new job, relationship change, new child.
+Examples: health coverage type, military/CAF membership, moved city, new job, relationship change, new child, birthday.
+
+FIELD PATH REFERENCE — use these exact paths for common facts:
+- Birthday / date of birth → domain: "user", field_path: "birthday", value: ISO date string "YYYY-MM-DD"
+- Name → domain: "user", field_path: "name"
+- Pronouns → domain: "user", field_path: "pronouns" (values: "he", "she", "they")
+- Health coverage → domain: "health", field_path: "health_coverage"
+- CAF member → domain: "military", field_path: "caf_member", value: true
+- CAF posting → domain: "military", field_path: "posting"
+- Primary medical facility → domain: "health", field_path: "primary_medical_facility"
+- Occupation sector → domain: "onboarding", field_path: "occupation_sector"
+
+For birthday: if the user gives a full date, convert to ISO format (YYYY-MM-DD). If only month and day are given with no year, do not extract — insufficient data.
 
 DO NOT extract: emotions, opinions, vague impressions, anything requiring inference.
 DO NOT extract facts already present in existing knowledge.
@@ -298,6 +310,18 @@ Read the conversation below and extract:
    - User expressed unexpected clarity about a previously avoided decision
    - A thread closed naturally — something resolved
 
+FIELD PATH REFERENCE — use these exact paths for common factual corrections:
+- Birthday / date of birth → domain: "user", field_path: "birthday", value: ISO date string "YYYY-MM-DD"
+- Name → domain: "user", field_path: "name"
+- Pronouns → domain: "user", field_path: "pronouns" (values: "he", "she", "they")
+- Health coverage → domain: "health", field_path: "health_coverage"
+- CAF member → domain: "military", field_path: "caf_member", value: true
+- CAF posting → domain: "military", field_path: "posting"
+- Primary medical facility → domain: "health", field_path: "primary_medical_facility"
+- Occupation sector → domain: "onboarding", field_path: "occupation_sector"
+
+For birthday: if the user gives a full date, convert to ISO format (YYYY-MM-DD). If only month and day are given with no year, do not extract — insufficient data.
+
 RULES:
 - Only extract what was actually said. Do not infer beyond what the text contains.
 - Do not speculate about causes or assign clinical labels.
@@ -311,11 +335,11 @@ JSON FORMAT:
 {
   "factual_corrections": [
     {
-      "domain": "health",
-      "field_path": "medical.coverage_type",
-      "value": "CAF",
+      "domain": "user",
+      "field_path": "birthday",
+      "value": "1985-03-15",
       "confidence": "high",
-      "evidence": "User stated they are a CAF member"
+      "evidence": "User stated their birthday is March 15th 1985"
     }
   ],
   "context_signals": [

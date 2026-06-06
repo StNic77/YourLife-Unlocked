@@ -86,7 +86,7 @@ function getEntries() {
   });
 }
 
-// Get entries for a specific day — includes range entries spanning this date
+// Get entries for a specific day — includes range entries and recurring occurrences
 function getEntriesForDay(dateStr) {
   const d = parseDate(dateStr);
   if (!d) return [];
@@ -96,8 +96,58 @@ function getEntriesForDay(dateStr) {
       const end   = parseDate(e.date_end);
       return start && end && d >= start && d <= end;
     }
-    return e.date === dateStr;
+    // Exact date match
+    if (e.date === dateStr) return true;
+    // Recurring occurrence check
+    if (e.recurring && e.recurring_frequency && e.date) {
+      return isRecurringOccurrence(e, dateStr);
+    }
+    return false;
   });
+}
+
+// Returns true if a recurring entry falls on the given dateStr
+function isRecurringOccurrence(entry, dateStr) {
+  const origin = parseDate(entry.date);
+  const target = parseDate(dateStr);
+  if (!origin || !target) return false;
+  // Don't show on the origin date itself — already matched by exact date check
+  if (dateStr === entry.date) return false;
+  // Don't recur before origin
+  if (target < origin) return false;
+
+  const diffMs   = target - origin;
+  const diffDays = Math.round(diffMs / 86400000);
+
+  switch (entry.recurring_frequency) {
+    case 'daily': {
+      // Every day after origin
+      return diffDays > 0;
+    }
+    case 'weekly': {
+      // Same day of week, every 7 days
+      return diffDays > 0 && diffDays % 7 === 0;
+    }
+    case 'biweekly': {
+      // Same day of week, every 14 days
+      return diffDays > 0 && diffDays % 14 === 0;
+    }
+    case 'monthly': {
+      // Same day of month, any month after origin
+      return target.getDate() === origin.getDate()
+        && (target.getFullYear() > origin.getFullYear()
+          || (target.getFullYear() === origin.getFullYear()
+            && target.getMonth() > origin.getMonth()));
+    }
+    case 'annually': {
+      // Same month and day, any year after origin
+      return target.getMonth() === origin.getMonth()
+        && target.getDate()  === origin.getDate()
+        && target.getFullYear() > origin.getFullYear();
+    }
+    default:
+      return false;
+  }
 }
 
 // Get all range entries that overlap with the current month view
@@ -157,7 +207,7 @@ export function addUserEntry(entry) {
     notes:               entry.notes || '',
     recurring:           entry.recurring || false,
     recurring_frequency: entry.recurring ? (entry.recurring_frequency || null) : null,
-    // recurring_frequency values (future): 'weekly' | 'monthly' | 'annual'
+    // recurring_frequency values: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'annually'
     source:              'user',
     domain:              null,
     created_at:          new Date().toISOString(),
@@ -169,6 +219,29 @@ export function addUserEntry(entry) {
 export function deleteUserEntry(entryId) {
   const calendar = store.get('calendar') || [];
   store.set('calendar', calendar.filter(e => e.id !== entryId || e.type !== 'user_entry'));
+}
+
+export function updateUserEntry(entryId, updates) {
+  const calendar = store.get('calendar') || [];
+  const isRange  = !!(updates.date_end && updates.date_end !== updates.date_start);
+  store.set('calendar', calendar.map(e => {
+    if (e.id !== entryId || e.type !== 'user_entry') return e;
+    return {
+      ...e,
+      title:               updates.title.trim(),
+      date:                updates.date_start || updates.date,
+      date_start:          isRange ? updates.date_start : null,
+      date_end:            isRange ? updates.date_end   : null,
+      is_range:            isRange,
+      time_start:          updates.time_start || null,
+      time_end:            updates.time_end   || null,
+      all_day:             !updates.time_start,
+      notes:               updates.notes || '',
+      recurring:           updates.recurring || false,
+      recurring_frequency: updates.recurring ? (updates.recurring_frequency || e.recurring_frequency || null) : null,
+      updated_at:          new Date().toISOString(),
+    };
+  }));
 }
 
 
@@ -189,6 +262,8 @@ export function createCalendar({ onClose, initialDate } = {}) {
   let viewDate     = new Date();   // month currently shown in grid
   let selectedDay  = initialDate || null;  // ISO date string — open to this day if provided
   let addingEntry  = false;        // entry form open
+  let editingEntry  = null;          // entry object being edited, null when not editing
+  let jumpPickerOpen = false;      // month/year jump picker overlay open
   let el           = null;         // the mounted DOM element
 
   // If opening to a specific date, show that month
@@ -248,6 +323,12 @@ export function createCalendar({ onClose, initialDate } = {}) {
     // Layer 1 — header (month nav + close)
     el.appendChild(buildHeader());
 
+    // Layer 1b — jump picker overlay (if open)
+    if (jumpPickerOpen) {
+      el.appendChild(buildJumpPicker());
+      return; // picker replaces the rest of the calendar until dismissed
+    }
+
     // Layer 2 — week day labels
     el.appendChild(buildWeekLabels());
 
@@ -260,12 +341,216 @@ export function createCalendar({ onClose, initialDate } = {}) {
     }
 
     // Layer 5 — entry form (if adding)
-    if (addingEntry) {
+    if (editingEntry) {
+      el.appendChild(buildEntryForm(editingEntry.date || editingEntry.date_start, editingEntry));
+    } else if (addingEntry) {
       el.appendChild(buildEntryForm(selectedDay));
     }
   }
 
   // ── Header ────────────────────────────────────────────────────────────────
+
+  // ── Jump picker — tap month/year label to open ───────────────────────────
+  // Month grid on top. Decade accordion below.
+  // Current decade open by default. Tap decade to expand. Tap year to select.
+
+  function buildJumpPicker() {
+    const currentYear  = viewDate.getFullYear();
+    const currentMonth = viewDate.getMonth();
+    const currentDecade = Math.floor(currentYear / 10) * 10;
+
+    let pickerYear   = currentYear;
+    let pickerMonth  = currentMonth;
+    let openDecade   = currentDecade;  // which decade is expanded
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = [
+      'position:absolute;inset:0;background:#000;z-index:200;',
+      'display:flex;flex-direction:column;overflow:hidden;',
+      'padding:max(52px, calc(var(--safe-top,0px) + 28px)) 0 max(24px, var(--safe-bottom,0px));',
+    ].join('');
+
+    // ── Header ────────────────────────────────────────────────────────────
+    const head = document.createElement('div');
+    head.style.cssText = [
+      'display:flex;justify-content:space-between;align-items:center;',
+      'padding:0 28px;margin-bottom:24px;flex-shrink:0;',
+    ].join('');
+
+    const title = document.createElement('div');
+    title.style.cssText = [
+      'font-family:var(--font-serif);font-style:italic;font-weight:300;',
+      'font-size:clamp(20px,5vw,26px);color:rgba(240,235,218,0.92);',
+    ].join('');
+    title.textContent = 'Go to';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'cancel';
+    cancelBtn.style.cssText = [
+      'font-family:var(--font-sans);font-weight:200;',
+      'font-size:10px;letter-spacing:0.22em;text-transform:uppercase;',
+      'color:rgba(240,235,218,0.3);padding:8px;',
+    ].join('');
+    cancelBtn.addEventListener('click', () => { jumpPickerOpen = false; render(); });
+
+    head.appendChild(title);
+    head.appendChild(cancelBtn);
+    wrap.appendChild(head);
+
+    // ── Month grid ────────────────────────────────────────────────────────
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthGrid  = document.createElement('div');
+    monthGrid.style.cssText = 'display:grid;grid-template-columns:repeat(4,1fr);gap:6px;padding:0 28px;margin-bottom:28px;flex-shrink:0;';
+
+    function renderMonthGrid() {
+      monthGrid.innerHTML = '';
+      monthNames.forEach((name, i) => {
+        const isSelected = i === pickerMonth;
+        const btn = document.createElement('button');
+        btn.textContent  = name;
+        btn.style.cssText = [
+          'font-family:var(--font-sans);font-weight:200;',
+          'font-size:11px;letter-spacing:0.1em;text-transform:uppercase;',
+          'padding:9px 4px;border-radius:2px;border:0.5px solid;transition:all 0.15s;',
+          isSelected
+            ? 'color:rgba(210,160,60,0.95);border-color:rgba(210,160,60,0.4);background:rgba(210,160,60,0.1);'
+            : 'color:rgba(240,235,218,0.4);border-color:rgba(240,235,218,0.08);background:transparent;',
+        ].join('');
+        btn.addEventListener('click', () => { pickerMonth = i; renderMonthGrid(); });
+        monthGrid.appendChild(btn);
+      });
+    }
+    renderMonthGrid();
+    wrap.appendChild(monthGrid);
+
+    // ── Divider ───────────────────────────────────────────────────────────
+    const divider = document.createElement('div');
+    divider.style.cssText = 'height:0.5px;background:rgba(240,235,218,0.07);margin:0 28px 20px;flex-shrink:0;';
+    wrap.appendChild(divider);
+
+    // ── Decade accordion ──────────────────────────────────────────────────
+    const accordionScroll = document.createElement('div');
+    accordionScroll.style.cssText = 'flex:1;overflow-y:auto;padding:0 28px 8px;-webkit-overflow-scrolling:touch;';
+
+    // Build decades from current+1 down to 1940s
+    const decades = [];
+    const topDecade = currentDecade + 10; // one future decade
+    for (let d = topDecade; d >= 1940; d -= 10) {
+      decades.push(d);
+    }
+
+    function renderAccordion() {
+      accordionScroll.innerHTML = '';
+
+      decades.forEach(decadeStart => {
+        const decadeEnd  = decadeStart + 9;
+        const isOpen     = decadeStart === openDecade;
+        const label      = `${decadeStart}s`;
+
+        // Decade row
+        const decadeRow = document.createElement('button');
+        decadeRow.style.cssText = [
+          'width:100%;display:flex;justify-content:space-between;align-items:center;',
+          'padding:12px 0;border-bottom:0.5px solid rgba(240,235,218,0.06);',
+          'font-family:var(--font-sans);font-weight:200;',
+          'font-size:12px;letter-spacing:0.12em;text-transform:uppercase;',
+          isOpen
+            ? 'color:rgba(240,235,218,0.7);'
+            : 'color:rgba(240,235,218,0.3);',
+          'transition:color 0.15s;',
+        ].join('');
+
+        const decadeLabel = document.createElement('span');
+        decadeLabel.textContent = label;
+
+        const chevron = document.createElement('span');
+        chevron.textContent = isOpen ? '▴' : '▾';
+        chevron.style.cssText = 'font-size:9px;color:rgba(240,235,218,0.2);';
+
+        decadeRow.appendChild(decadeLabel);
+        decadeRow.appendChild(chevron);
+
+        decadeRow.addEventListener('click', () => {
+          openDecade = isOpen ? null : decadeStart;
+          renderAccordion();
+        });
+
+        accordionScroll.appendChild(decadeRow);
+
+        // Year grid — shown when decade is open
+        if (isOpen) {
+          const yearGrid = document.createElement('div');
+          yearGrid.style.cssText = 'display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:12px 0 8px;';
+
+          for (let y = decadeStart; y <= Math.min(decadeEnd, currentYear + 5); y++) {
+            const isSelected = y === pickerYear;
+            const isCurrent  = y === currentYear;
+
+            const yBtn = document.createElement('button');
+            yBtn.textContent = y;
+            yBtn.style.cssText = [
+              'font-family:var(--font-sans);font-weight:200;',
+              'font-size:12px;letter-spacing:0.03em;',
+              'padding:9px 4px;border-radius:2px;border:0.5px solid;transition:all 0.15s;',
+              isSelected
+                ? 'color:rgba(210,160,60,0.95);border-color:rgba(210,160,60,0.4);background:rgba(210,160,60,0.1);'
+                : isCurrent
+                  ? 'color:rgba(240,235,218,0.75);border-color:rgba(240,235,218,0.25);background:transparent;'
+                  : 'color:rgba(240,235,218,0.4);border-color:rgba(240,235,218,0.08);background:transparent;',
+            ].join('');
+
+            yBtn.addEventListener('click', () => {
+              pickerYear = y;
+              renderMonthGrid();
+              renderAccordion();
+            });
+
+            yearGrid.appendChild(yBtn);
+          }
+
+          accordionScroll.appendChild(yearGrid);
+        }
+      });
+    }
+
+    renderAccordion();
+    wrap.appendChild(accordionScroll);
+
+    // ── Go button ──────────────────────────────────────────────────────────
+    const goWrap = document.createElement('div');
+    goWrap.style.cssText = 'padding:16px 28px 0;flex-shrink:0;';
+
+    const goBtn = document.createElement('button');
+    goBtn.style.cssText = [
+      'width:100%;',
+      'font-family:var(--font-sans);font-weight:300;',
+      'font-size:11px;letter-spacing:0.2em;text-transform:uppercase;',
+      'color:rgba(240,235,218,0.8);',
+      'border:0.5px solid rgba(240,235,218,0.25);border-radius:2px;',
+      'padding:14px;transition:all 0.2s;',
+    ].join('');
+    goBtn.textContent = 'Go';
+    goBtn.addEventListener('click', () => {
+      viewDate       = new Date(pickerYear, pickerMonth, 1);
+      selectedDay    = null;
+      addingEntry    = false;
+      jumpPickerOpen = false;
+      render();
+    });
+    goBtn.addEventListener('mouseenter', () => {
+      goBtn.style.color = 'rgba(240,235,218,1)';
+      goBtn.style.borderColor = 'rgba(240,235,218,0.5)';
+    });
+    goBtn.addEventListener('mouseleave', () => {
+      goBtn.style.color = 'rgba(240,235,218,0.8)';
+      goBtn.style.borderColor = 'rgba(240,235,218,0.25)';
+    });
+
+    goWrap.appendChild(goBtn);
+    wrap.appendChild(goWrap);
+
+    return wrap;
+  }
 
   function buildHeader() {
     const div = document.createElement('div');
@@ -282,12 +567,18 @@ export function createCalendar({ onClose, initialDate } = {}) {
           font-size:18px;color:rgba(240,235,218,0.4);
           padding:4px 8px;transition:color 0.2s;
         ">‹</button>
-        <div style="
+        <button id="cal-month-label" style="
           font-family:var(--font-serif);font-style:italic;font-weight:300;
           font-size:clamp(20px,5vw,26px);
           color:rgba(240,235,218,0.92);
           min-width:180px;text-align:center;
-        ">${formatMonthYear(viewDate)}</div>
+          background:none;border:none;cursor:pointer;
+          transition:color 0.2s;
+        ">${formatMonthYear(viewDate)}<span style="
+          font-family:var(--font-sans);font-size:10px;
+          letter-spacing:0.15em;color:rgba(240,235,218,0.25);
+          margin-left:8px;vertical-align:middle;
+        ">▾</span></button>
         <button id="cal-next" style="
           font-family:var(--font-sans);font-weight:200;
           font-size:18px;color:rgba(240,235,218,0.4);
@@ -315,6 +606,10 @@ export function createCalendar({ onClose, initialDate } = {}) {
       render();
     });
     div.querySelector('#cal-close').addEventListener('click', close);
+    div.querySelector('#cal-month-label').addEventListener('click', () => {
+      jumpPickerOpen = !jumpPickerOpen;
+      render();
+    });
 
     // Hover states
     ['#cal-prev','#cal-next'].forEach(id => {
@@ -711,10 +1006,63 @@ export function createCalendar({ onClose, initialDate } = {}) {
       sub.textContent = 'All day';
     }
     main.appendChild(sub);
+
+    // Notes — shown inline if present
+    if (!isSignal && entry.notes && entry.notes.trim()) {
+      const notes = document.createElement('div');
+      notes.style.cssText = [
+        'font-family:var(--font-sans);font-weight:200;',
+        'font-size:12px;letter-spacing:0.03em;line-height:1.5;',
+        'color:rgba(240,235,218,0.45);',
+        'margin-top:8px;white-space:pre-wrap;',
+      ].join('');
+      notes.textContent = entry.notes.trim();
+      main.appendChild(notes);
+    }
+
+    // Recurring badge
+    if (!isSignal && entry.recurring && entry.recurring_frequency) {
+      const badge = document.createElement('div');
+      badge.style.cssText = [
+        'display:inline-block;margin-top:6px;',
+        'font-family:var(--font-sans);font-weight:200;',
+        'font-size:9px;letter-spacing:0.15em;text-transform:uppercase;',
+        'color:rgba(240,235,218,0.2);',
+      ].join('');
+      badge.textContent = `↻ ${entry.recurring_frequency}`;
+      main.appendChild(badge);
+    }
+
     row.appendChild(main);
 
-    // Delete button — user entries only
+    // Edit + Delete buttons — user entries only
     if (!isSignal) {
+      const btnWrap = document.createElement('div');
+      btnWrap.style.cssText = 'display:flex;gap:6px;align-self:center;flex-shrink:0;';
+
+      const edit = document.createElement('button');
+      edit.style.cssText = [
+        'font-family:var(--font-sans);font-weight:200;',
+        'font-size:9px;letter-spacing:0.2em;text-transform:uppercase;',
+        'color:rgba(240,235,218,0.3);',
+        'border:0.5px solid rgba(240,235,218,0.15);border-radius:1px;',
+        'padding:4px 8px;transition:all 0.2s;white-space:nowrap;',
+      ].join('');
+      edit.textContent = 'edit';
+      edit.addEventListener('click', () => {
+        editingEntry = entry;
+        addingEntry  = false;
+        render();
+      });
+      edit.addEventListener('mouseenter', () => {
+        edit.style.color = 'rgba(240,235,218,0.7)';
+        edit.style.borderColor = 'rgba(240,235,218,0.35)';
+      });
+      edit.addEventListener('mouseleave', () => {
+        edit.style.color = 'rgba(240,235,218,0.3)';
+        edit.style.borderColor = 'rgba(240,235,218,0.15)';
+      });
+
       const del = document.createElement('button');
       del.style.cssText = [
         'font-family:var(--font-sans);font-weight:200;',
@@ -722,22 +1070,45 @@ export function createCalendar({ onClose, initialDate } = {}) {
         'color:rgba(240,235,218,0.2);',
         'border:0.5px solid rgba(240,235,218,0.1);border-radius:1px;',
         'padding:4px 8px;transition:all 0.2s;white-space:nowrap;',
-        'align-self:center;',
       ].join('');
       del.textContent = 'remove';
+      let confirmPending = false;
+      let confirmTimer   = null;
+
       del.addEventListener('click', () => {
-        deleteUserEntry(entry.id);
-        // store change triggers re-render via subscription
+        if (confirmPending) {
+          clearTimeout(confirmTimer);
+          deleteUserEntry(entry.id);
+        } else {
+          confirmPending      = true;
+          del.textContent     = 'sure?';
+          del.style.color     = 'rgba(240,235,218,0.7)';
+          del.style.borderColor = 'rgba(240,235,218,0.35)';
+          // Auto-reset after 3 seconds if user doesn't confirm
+          confirmTimer = setTimeout(() => {
+            confirmPending      = false;
+            del.textContent     = 'remove';
+            del.style.color     = 'rgba(240,235,218,0.2)';
+            del.style.borderColor = 'rgba(240,235,218,0.1)';
+          }, 3000);
+        }
       });
       del.addEventListener('mouseenter', () => {
-        del.style.color = 'rgba(240,235,218,0.5)';
-        del.style.borderColor = 'rgba(240,235,218,0.25)';
+        if (!confirmPending) {
+          del.style.color = 'rgba(240,235,218,0.5)';
+          del.style.borderColor = 'rgba(240,235,218,0.25)';
+        }
       });
       del.addEventListener('mouseleave', () => {
-        del.style.color = 'rgba(240,235,218,0.2)';
-        del.style.borderColor = 'rgba(240,235,218,0.1)';
+        if (!confirmPending) {
+          del.style.color = 'rgba(240,235,218,0.2)';
+          del.style.borderColor = 'rgba(240,235,218,0.1)';
+        }
       });
-      row.appendChild(del);
+
+      btnWrap.appendChild(edit);
+      btnWrap.appendChild(del);
+      row.appendChild(btnWrap);
     }
 
     return row;
@@ -745,7 +1116,8 @@ export function createCalendar({ onClose, initialDate } = {}) {
 
   // ── Entry form ────────────────────────────────────────────────────────────
 
-  function buildEntryForm(dateStr) {
+  function buildEntryForm(dateStr, existingEntry = null) {
+    const isEditing = !!existingEntry;
     const overlay = document.createElement('div');
     overlay.style.cssText = [
       'position:absolute;inset:0;',
@@ -769,7 +1141,7 @@ export function createCalendar({ onClose, initialDate } = {}) {
         font-family:var(--font-sans);font-weight:200;
         font-size:9px;letter-spacing:0.35em;text-transform:uppercase;
         color:rgba(240,235,218,0.3);margin-bottom:20px;
-      ">Add to ${formatDayHeading(parseDate(dateStr))}</div>
+      ">${isEditing ? 'Edit entry' : 'Add to ' + formatDayHeading(parseDate(dateStr))}</div>
     `;
 
     // Title field
@@ -778,10 +1150,11 @@ export function createCalendar({ onClose, initialDate } = {}) {
       placeholder: 'What is it?',
       type:        'text',
       required:    true,
+      value:       existingEntry?.title || '',
     }));
 
     // ── Date range toggle ────────────────────────────────────────────────────
-    let isDateRange = false;
+    let isDateRange = !!(existingEntry?.is_range);
 
     const rangeToggleWrap = document.createElement('div');
     rangeToggleWrap.style.cssText = [
@@ -815,13 +1188,147 @@ export function createCalendar({ onClose, initialDate } = {}) {
     `;
 
     // End date field — hidden until range toggle is on
-    const endDateWrap = _buildFormField({
-      id:          'entry-date-end',
-      placeholder: `End date (e.g. ${toISO(addDays(parseDate(dateStr), 3))})`,
-      type:        'text',
-      required:    false,
-    });
-    endDateWrap.style.display = 'none';
+    // ── End date mini calendar picker ────────────────────────────────────────
+    let endDate = existingEntry?.date_end || null;  // ISO string, null until selected
+    let endPickerView = endDate ? parseDate(endDate) : parseDate(dateStr);
+
+    const endDateWrap = document.createElement('div');
+    endDateWrap.style.display = isDateRange ? 'block' : 'none';
+    endDateWrap.style.cssText = `display:${isDateRange ? 'block' : 'none'};margin-bottom:16px;`;
+
+    function buildEndDatePicker() {
+      endDateWrap.innerHTML = '';
+
+      const year  = endPickerView.getFullYear();
+      const month = endPickerView.getMonth();
+      const firstDay    = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      // Mini picker header
+      const pickerHead = document.createElement('div');
+      pickerHead.style.cssText = [
+        'display:flex;align-items:center;justify-content:space-between;',
+        'margin-bottom:8px;',
+      ].join('');
+
+      const label = document.createElement('div');
+      label.style.cssText = [
+        'font-family:var(--font-sans);font-weight:200;',
+        'font-size:11px;letter-spacing:0.12em;text-transform:uppercase;',
+        'color:rgba(240,235,218,0.45);',
+      ].join('');
+      label.textContent = `End date — ${new Date(year, month).toLocaleDateString('en-CA', { month: 'long', year: 'numeric' })}`;
+
+      const navWrap = document.createElement('div');
+      navWrap.style.cssText = 'display:flex;gap:8px;';
+
+      ['‹', '›'].forEach((arrow, i) => {
+        const btn = document.createElement('button');
+        btn.textContent = arrow;
+        btn.style.cssText = [
+          'font-family:var(--font-sans);font-size:14px;',
+          'color:rgba(240,235,218,0.3);background:none;border:none;',
+          'cursor:pointer;padding:0 2px;line-height:1;',
+        ].join('');
+        btn.addEventListener('click', () => {
+          endPickerView = new Date(year, month + (i === 0 ? -1 : 1), 1);
+          buildEndDatePicker();
+        });
+        navWrap.appendChild(btn);
+      });
+
+      pickerHead.appendChild(label);
+      pickerHead.appendChild(navWrap);
+      endDateWrap.appendChild(pickerHead);
+
+      // Day-of-week row
+      const dowRow = document.createElement('div');
+      dowRow.style.cssText = 'display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:4px;';
+      ['S','M','T','W','T','F','S'].forEach(d => {
+        const cell = document.createElement('div');
+        cell.textContent = d;
+        cell.style.cssText = [
+          'text-align:center;',
+          'font-family:var(--font-sans);font-weight:200;',
+          'font-size:9px;letter-spacing:0.1em;',
+          'color:rgba(240,235,218,0.2);',
+          'padding:2px 0;',
+        ].join('');
+        dowRow.appendChild(cell);
+      });
+      endDateWrap.appendChild(dowRow);
+
+      // Day grid
+      const grid = document.createElement('div');
+      grid.style.cssText = 'display:grid;grid-template-columns:repeat(7,1fr);gap:2px;';
+
+      // Empty cells before first day
+      for (let i = 0; i < firstDay; i++) {
+        grid.appendChild(document.createElement('div'));
+      }
+
+      const startISO   = dateStr;
+      const todayISO   = toISO(new Date());
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const cellISO   = `${year}-${String(month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const isSelected = cellISO === endDate;
+        const isStart    = cellISO === startISO;
+        const isPast     = cellISO < startISO;
+        const isToday    = cellISO === todayISO;
+
+        const cell = document.createElement('div');
+        cell.textContent = d;
+        cell.style.cssText = [
+          'text-align:center;padding:6px 2px;border-radius:2px;',
+          'font-family:var(--font-sans);font-weight:300;font-size:12px;',
+          isPast
+            ? 'color:rgba(240,235,218,0.12);cursor:default;'
+            : 'cursor:pointer;',
+          isSelected
+            ? 'background:rgba(210,160,60,0.25);color:rgba(210,160,60,0.95);'
+            : isStart
+              ? 'color:rgba(240,235,218,0.35);'
+              : isToday
+                ? 'color:rgba(240,235,218,0.7);'
+                : isPast
+                  ? ''
+                  : 'color:rgba(240,235,218,0.6);',
+          'transition:background 0.15s;',
+        ].join('');
+
+        if (!isPast) {
+          cell.addEventListener('click', () => {
+            endDate = cellISO;
+            buildEndDatePicker();
+          });
+          if (!isSelected) {
+            cell.addEventListener('mouseenter', () => cell.style.background = 'rgba(240,235,218,0.06)');
+            cell.addEventListener('mouseleave', () => cell.style.background = 'transparent');
+          }
+        }
+
+        grid.appendChild(cell);
+      }
+
+      endDateWrap.appendChild(grid);
+
+      // Show selected date confirmation
+      if (endDate) {
+        const confirm = document.createElement('div');
+        confirm.style.cssText = [
+          'margin-top:8px;',
+          'font-family:var(--font-sans);font-weight:200;',
+          'font-size:11px;letter-spacing:0.06em;',
+          'color:rgba(210,160,60,0.7);',
+        ].join('');
+        confirm.textContent = `Ends ${parseDate(endDate).toLocaleDateString('en-CA', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+        endDateWrap.appendChild(confirm);
+      }
+    }
+
+    buildEndDatePicker();
+    // ── End date mini calendar picker ─────────────────────────────────────────
 
     rangeToggleBtn.addEventListener('click', () => {
       isDateRange = !isDateRange;
@@ -833,6 +1340,7 @@ export function createCalendar({ onClose, initialDate } = {}) {
         knob.style.background             = 'rgba(180,200,240,0.9)';
         rangeToggleLabel.style.color      = 'rgba(240,235,218,0.7)';
         endDateWrap.style.display         = 'block';
+        buildEndDatePicker();
       } else {
         rangeToggleBtn.style.background   = 'rgba(240,235,218,0.1)';
         rangeToggleBtn.style.borderColor  = 'rgba(240,235,218,0.2)';
@@ -840,6 +1348,7 @@ export function createCalendar({ onClose, initialDate } = {}) {
         knob.style.background             = 'rgba(240,235,218,0.35)';
         rangeToggleLabel.style.color      = 'rgba(240,235,218,0.4)';
         endDateWrap.style.display         = 'none';
+        endDate = null;
       }
     });
 
@@ -855,6 +1364,7 @@ export function createCalendar({ onClose, initialDate } = {}) {
       placeholder: 'Start time — optional (e.g. 14:00)',
       type:        'text',
       required:    false,
+      value:       existingEntry?.time_start || '',
     });
     form.appendChild(timeStartWrap);
 
@@ -864,6 +1374,7 @@ export function createCalendar({ onClose, initialDate } = {}) {
       placeholder: 'End time — optional (e.g. 16:00)',
       type:        'text',
       required:    false,
+      value:       existingEntry?.time_end || '',
     });
     form.appendChild(timeEndWrap);
 
@@ -873,17 +1384,24 @@ export function createCalendar({ onClose, initialDate } = {}) {
       placeholder: 'Notes — optional',
       type:        'textarea',
       required:    false,
+      value:       existingEntry?.notes || '',
     }));
 
-    // Recurring toggle
-    let isRecurring = false;
+    // Recurring toggle + frequency selector
+    let isRecurring       = !!(existingEntry?.recurring);
+    let recurringFrequency = existingEntry?.recurring_frequency || 'weekly';
 
+    const recurringSection = document.createElement('div');
+    recurringSection.style.cssText = [
+      'border-top:0.5px solid rgba(240,235,218,0.06);',
+      'margin-top:4px;padding-top:4px;',
+    ].join('');
+
+    // Toggle row
     const recurringWrap = document.createElement('div');
     recurringWrap.style.cssText = [
       'display:flex;align-items:center;justify-content:space-between;',
       'padding:12px 0;',
-      'border-top:0.5px solid rgba(240,235,218,0.06);',
-      'margin-top:4px;',
     ].join('');
 
     const recurringLabel = document.createElement('div');
@@ -911,27 +1429,85 @@ export function createCalendar({ onClose, initialDate } = {}) {
       "></span>
     `;
 
+    // Frequency selector — shown when recurring is on
+    const freqWrap = document.createElement('div');
+    freqWrap.style.cssText = [
+      'display:flex;gap:8px;padding-bottom:12px;',
+      isRecurring ? '' : 'display:none;',
+    ].join('');
+    freqWrap.style.display = isRecurring ? 'flex' : 'none';
+
+    const frequencies = [
+      { value: 'daily',     label: 'Daily' },
+      { value: 'weekly',    label: 'Weekly' },
+      { value: 'biweekly',  label: 'Biweekly' },
+      { value: 'monthly',   label: 'Monthly' },
+      { value: 'annually',  label: 'Annually' },
+    ];
+
+    function updateFreqButtons() {
+      freqWrap.querySelectorAll('[data-freq]').forEach(btn => {
+        const active = btn.dataset.freq === recurringFrequency;
+        btn.style.color       = active ? 'rgba(210,160,60,0.9)'  : 'rgba(240,235,218,0.3)';
+        btn.style.borderColor = active ? 'rgba(210,160,60,0.4)'  : 'rgba(240,235,218,0.12)';
+        btn.style.background  = active ? 'rgba(210,160,60,0.08)' : 'transparent';
+      });
+    }
+
+    frequencies.forEach(({ value, label }) => {
+      const btn = document.createElement('button');
+      btn.dataset.freq = value;
+      btn.textContent  = label;
+      btn.style.cssText = [
+        'font-family:var(--font-sans);font-weight:200;',
+        'font-size:10px;letter-spacing:0.15em;text-transform:uppercase;',
+        'border:0.5px solid rgba(240,235,218,0.12);border-radius:1px;',
+        'padding:5px 10px;transition:all 0.2s;cursor:pointer;',
+      ].join('');
+      btn.addEventListener('click', () => {
+        recurringFrequency = value;
+        updateFreqButtons();
+      });
+      freqWrap.appendChild(btn);
+    });
+
+    updateFreqButtons();
+
+    // Set initial toggle state
+    if (isRecurring) {
+      const knob = recurringToggle.querySelector('span');
+      recurringToggle.style.background  = 'rgba(210,160,60,0.25)';
+      recurringToggle.style.borderColor = 'rgba(210,160,60,0.5)';
+      knob.style.transform              = 'translateX(16px)';
+      knob.style.background             = 'rgba(210,160,60,0.9)';
+      recurringLabel.style.color        = 'rgba(240,235,218,0.7)';
+    }
+
     recurringToggle.addEventListener('click', () => {
       isRecurring = !isRecurring;
-      const knob = recurringToggle.querySelector('span');
+      const knob  = recurringToggle.querySelector('span');
       if (isRecurring) {
-        recurringToggle.style.background    = 'rgba(210,160,60,0.25)';
-        recurringToggle.style.borderColor   = 'rgba(210,160,60,0.5)';
-        knob.style.transform                = 'translateX(16px)';
-        knob.style.background               = 'rgba(210,160,60,0.9)';
-        recurringLabel.style.color          = 'rgba(240,235,218,0.7)';
+        recurringToggle.style.background  = 'rgba(210,160,60,0.25)';
+        recurringToggle.style.borderColor = 'rgba(210,160,60,0.5)';
+        knob.style.transform              = 'translateX(16px)';
+        knob.style.background             = 'rgba(210,160,60,0.9)';
+        recurringLabel.style.color        = 'rgba(240,235,218,0.7)';
+        freqWrap.style.display            = 'flex';
       } else {
-        recurringToggle.style.background    = 'rgba(240,235,218,0.1)';
-        recurringToggle.style.borderColor   = 'rgba(240,235,218,0.2)';
-        knob.style.transform                = 'translateX(0)';
-        knob.style.background               = 'rgba(240,235,218,0.35)';
-        recurringLabel.style.color          = 'rgba(240,235,218,0.4)';
+        recurringToggle.style.background  = 'rgba(240,235,218,0.1)';
+        recurringToggle.style.borderColor = 'rgba(240,235,218,0.2)';
+        knob.style.transform              = 'translateX(0)';
+        knob.style.background             = 'rgba(240,235,218,0.35)';
+        recurringLabel.style.color        = 'rgba(240,235,218,0.4)';
+        freqWrap.style.display            = 'none';
       }
     });
 
     recurringWrap.appendChild(recurringLabel);
     recurringWrap.appendChild(recurringToggle);
-    form.appendChild(recurringWrap);
+    recurringSection.appendChild(recurringWrap);
+    recurringSection.appendChild(freqWrap);
+    form.appendChild(recurringSection);
 
     // Buttons row
     const btns = document.createElement('div');
@@ -948,36 +1524,51 @@ export function createCalendar({ onClose, initialDate } = {}) {
       }
 
       if (isDateRange) {
-        const dateEnd = form.querySelector('#entry-date-end')?.value?.trim();
-        if (!dateEnd) {
-          _shake(form.querySelector('#entry-date-end'));
+        if (!endDate) {
+          // Shake the end date picker header as visual feedback
+          const pickerHead = endDateWrap.querySelector('div');
+          if (pickerHead) _shake(pickerHead);
           return;
         }
-        addUserEntry({
+        const payload = {
           title,
-          date_start: dateStr,
-          date_end:   dateEnd,
-          notes:      form.querySelector('#entry-notes')?.value?.trim() || '',
-          recurring:  isRecurring,
-        });
+          date_start:          dateStr,
+          date_end:            endDate,
+          notes:               form.querySelector('#entry-notes')?.value?.trim() || '',
+          recurring:           isRecurring,
+          recurring_frequency: isRecurring ? recurringFrequency : null,
+        };
+        if (isEditing) {
+          updateUserEntry(existingEntry.id, payload);
+        } else {
+          addUserEntry(payload);
+        }
       } else {
-        addUserEntry({
+        const payload = {
           title,
-          date:       dateStr,
-          date_start: null,
-          date_end:   null,
-          time_start: form.querySelector('#entry-time-start')?.value?.trim() || null,
-          time_end:   form.querySelector('#entry-time-end')?.value?.trim()   || null,
-          notes:      form.querySelector('#entry-notes')?.value?.trim()      || '',
-          recurring:  isRecurring,
-        });
+          date:                dateStr,
+          date_start:          null,
+          date_end:            null,
+          time_start:          form.querySelector('#entry-time-start')?.value?.trim() || null,
+          time_end:            form.querySelector('#entry-time-end')?.value?.trim()   || null,
+          notes:               form.querySelector('#entry-notes')?.value?.trim()      || '',
+          recurring:           isRecurring,
+          recurring_frequency: isRecurring ? recurringFrequency : null,
+        };
+        if (isEditing) {
+          updateUserEntry(existingEntry.id, payload);
+        } else {
+          addUserEntry(payload);
+        }
       }
-      addingEntry = false;
-      // store change triggers re-render via subscription
+      addingEntry  = false;
+      editingEntry = null;
+      render();
     });
 
     cancelBtn.addEventListener('click', () => {
-      addingEntry = false;
+      addingEntry  = false;
+      editingEntry = null;
       render();
     });
 
@@ -989,7 +1580,7 @@ export function createCalendar({ onClose, initialDate } = {}) {
 
     // Tap backdrop to cancel
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) { addingEntry = false; render(); }
+      if (e.target === overlay) { addingEntry = false; editingEntry = null; render(); }
     });
 
     return overlay;
@@ -997,7 +1588,7 @@ export function createCalendar({ onClose, initialDate } = {}) {
 
   // ── Form helpers ──────────────────────────────────────────────────────────
 
-  function _buildFormField({ id, placeholder, type, required }) {
+  function _buildFormField({ id, placeholder, type, required, value = '' }) {
     const wrap = document.createElement('div');
     wrap.style.cssText = 'margin-bottom:12px;';
 
@@ -1013,6 +1604,7 @@ export function createCalendar({ onClose, initialDate } = {}) {
     }
 
     el.placeholder = placeholder;
+    if (value) el.value = value;
     el.style.cssText = [
       'width:100%;box-sizing:border-box;',
       'background:rgba(240,235,218,0.05);',

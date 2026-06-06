@@ -3929,9 +3929,13 @@ const healthIntakeRenderer = {
       ? s.medications_text.split('\n').map(l => l.trim()).filter(Boolean).map(name => ({ name }))
       : [];
 
-    // Primary care next_due
-    const pc_next_due = s.pc_next_due ||
-      (s.pc_last_seen ? computeNextDue(s.pc_last_seen, 365) : null);
+    // Primary care next_due — always recomputed from last_seen.
+    // The intake has no next_due input field, so pc_next_due in state is always
+    // the old store value. Recomputing ensures a corrected last_seen date
+    // immediately produces the correct next_due without carrying stale overdue state.
+    const pc_next_due = s.pc_last_seen
+      ? computeNextDue(s.pc_last_seen, 365)
+      : null;
 
     saveMedicalIntake({
       sex_assigned_at_birth: sex,

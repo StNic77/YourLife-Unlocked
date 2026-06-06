@@ -683,6 +683,35 @@ export function buildPrimaryBrief() {
     });
   }
 
+  // ── Edit profile entry point ──────────────────────────────────────────────
+  const _profileUser = store.get('user') || {};
+  sections.push({
+    heading:     _profileUser.name || 'Profile',
+    items:       [{
+      label:       'Edit profile',
+      value:       '',
+      urgent:      false,
+      custom_html: `
+        <div style="padding:14px 0;border-bottom:0.5px solid rgba(240,235,218,0.06);">
+          <button
+            class="brief-cta"
+            data-action="edit_profile"
+            style="
+              font-family:var(--font-sans);font-weight:200;
+              font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
+              color:rgba(240,235,218,0.5);
+              border:0.5px solid rgba(240,235,218,0.25);border-radius:2px;
+              padding:8px 16px;
+              transition:all 0.2s;
+            "
+          >Edit profile</button>
+        </div>
+      `,
+    }],
+    collapsible: false,
+    collapsed:   false,
+  });
+
   return { title: 'Brief', sections, is_primary: true, shape: getShapeContext() };
 }
 

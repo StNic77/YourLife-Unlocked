@@ -6,6 +6,7 @@ import { createTeam } from './team.js';
 import { createHome } from './home.js';
 import { createLocationRequest } from './location.js';
 import { initShape } from './shape.js';
+import { syncHealthSignals } from './health.js';
 
 const app = document.getElementById('app');
 
@@ -411,13 +412,16 @@ async function boot() {
     return;
   }
 
-  // SHAPE — initialise after store is loaded, before any routing.
-  // Non-blocking: convergence check runs sync, interpreted layer rebuild is async.
-  initShape();
-
   // DEV PERSONAS — checked before returning-user logic
   // ?dev=single | ?dev=married | ?dev=blended
   // Loads persona state and skips onboarding entirely.
+  // SHAPE — initialise after store is loaded. Non-blocking.
+  initShape();
+
+  // Health signals — sync on every boot so calendar reflects current health data
+  // without requiring the user to re-save health information.
+  syncHealthSignals();
+
   const devParam = new URLSearchParams(window.location.search).get('dev');
 
   // Real user shortcut — loads Shawn's actual data

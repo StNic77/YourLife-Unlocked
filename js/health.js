@@ -513,7 +513,7 @@ export function syncHealthSignals() {
     title:       'Annual physical',
     dateStr:     pc.next_due || null,
     domain_ref:  'primary_care',
-    windowDays:  HEALTH_SIGNAL_CAUTION_DAYS,
+    windowDays:  365,   // always show known appointments on calendar regardless of how far out
     signal_type: 'upcoming',
   });
 
@@ -525,7 +525,7 @@ export function syncHealthSignals() {
       title:       p.name || p.type || 'Provider appointment',
       dateStr:     p.next_due || null,
       domain_ref:  p.id,
-      windowDays:  HEALTH_SIGNAL_CAUTION_DAYS,
+      windowDays:  365,   // always show known appointments on calendar
       signal_type: 'appointment',
     });
   });
@@ -537,7 +537,7 @@ export function syncHealthSignals() {
       title:       s.label || 'Screening',
       dateStr:     s.next_due || null,
       domain_ref:  s.id,
-      windowDays:  HEALTH_SIGNAL_CAUTION_DAYS,
+      windowDays:  HEALTH_SIGNAL_CAUTION_DAYS,   // screenings stay at 30-day window — only surface when due
       signal_type: 'upcoming',
     });
   });
