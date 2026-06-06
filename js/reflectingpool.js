@@ -202,7 +202,7 @@ export function createReflectingPoolPanel(container, onClose) {
       <!-- Header -->
       <div style="
         display:flex;align-items:center;justify-content:space-between;
-        padding:20px 20px 16px;
+        padding:max(20px, env(safe-area-inset-top)) 20px 16px;
         border-bottom:0.5px solid rgba(240,235,218,0.08);
         flex-shrink:0;
       ">
@@ -214,7 +214,7 @@ export function createReflectingPoolPanel(container, onClose) {
           background:none;border:none;cursor:pointer;padding:4px 8px;
           font-family:var(--font-sans);font-weight:300;
           font-size:10px;letter-spacing:0.22em;text-transform:uppercase;
-          color:rgba(240,235,218,0.25);
+          color:rgba(240,235,218,0.45);
           transition:color 0.2s ease;
         ">close</button>
       </div>
@@ -240,7 +240,7 @@ export function createReflectingPoolPanel(container, onClose) {
       <!-- Input area -->
       <div id="rp-input-area" style="
         flex-shrink:0;
-        padding:12px 20px 28px;
+        padding:12px 20px max(28px, env(safe-area-inset-bottom));
         border-top:0.5px solid rgba(240,235,218,0.08);
       ">
         <style>
