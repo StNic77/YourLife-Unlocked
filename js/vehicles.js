@@ -129,7 +129,11 @@ function _syncVehicleSignals(vehicle) {
 
     if (!value) return; // no date on file — no signal
 
-    const date = new Date(value);
+    // Validate ISO format — skip bad values rather than writing NaN signals
+    if (!/^\d{4}-\d{2}-\d{2}/.test(value)) return;
+
+    const date = new Date(value + 'T00:00:00');
+    if (isNaN(date)) return;
     const days = Math.ceil((date - today) / (1000 * 60 * 60 * 24));
 
     // Only write a signal if within the upcoming window or overdue

@@ -1,4 +1,5 @@
 import { store } from './store.js';
+import { buildDateField, attachDateListeners, readDateField } from './datepicker.js';
 
 // ---------------------------------------------------------------------------
 // PROFILE EDITOR
@@ -161,11 +162,16 @@ export function createProfileEditor({ onClose } = {}) {
       }));
     }
 
-    body.appendChild(_dateField({
-      label:    'Birthday',
-      value:    draft.birthday,
-      onChange: v => { draft.birthday = v; },
-    }));
+    // Birthday — uses shared datepicker component
+    const birthdayWrap = document.createElement('div');
+    birthdayWrap.innerHTML = buildDateField('profile-birthday', 'Birthday', draft.birthday || '', { past: true });
+    body.appendChild(birthdayWrap);
+    attachDateListeners(birthdayWrap);
+    // Keep draft in sync when date changes
+    const birthdayHidden = birthdayWrap.querySelector('#profile-birthday');
+    if (birthdayHidden) {
+      birthdayHidden.addEventListener('change', () => { draft.birthday = birthdayHidden.value; });
+    }
 
     body.appendChild(_tileField({
       label:    'Occupation',

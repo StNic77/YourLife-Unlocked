@@ -369,6 +369,7 @@ export function createHome(world) {
   function renderHotspots() {
     const layer = el.querySelector('#home-hotspots');
     if (!layer) return;
+    layer.innerHTML = ''; // clear before rebuild — prevents stale circles stacking
 
     hotspots.forEach(spot => {
       const spotUrgent = urgentByObj[spot.id];
@@ -436,9 +437,8 @@ export function createHome(world) {
         if (spot.primary) {
           btn.style.boxShadow = `0 0 0 1px ${glowRing}, 0 0 24px ${glowColor}`;
         }
-      } else if (spot.primary) {
-        btn.style.boxShadow = '0 0 0 1px rgba(240,235,218,0.12), 0 0 20px rgba(240,235,218,0.06)';
       }
+      // Primary spot (ATAK) gets no default ring — it doesn't need to announce itself
 
       btn.addEventListener('pointerdown', () => {
         btn.style.transform = 'translate(-50%, -50%) scale(0.92)';
@@ -945,7 +945,14 @@ export function createHome(world) {
         item,
         onBack: () => {},
         onComplete: () => {
-          dismissItem(itemId);
+          // Derived maintenance items live in maintenance_tasks, not urgent_items.
+          // dismissItem only touches urgent_items — it's a no-op for derived items.
+          // syncMaintenanceSignals re-evaluates the store and clears the dot immediately.
+          if (item.domain === 'maintenance') {
+            syncMaintenanceSignals();
+          } else {
+            dismissItem(itemId);
+          }
           closeBrief();
         },
       });

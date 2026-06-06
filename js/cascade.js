@@ -11,6 +11,14 @@ import {
   computeNextDue,
 } from './health.js';
 import { syncBirthdaySignals, retireBirthdaySignal } from './atak.js';
+import { syncVehicleSignals } from './vehicles.js';
+import {
+  buildDateField,
+  attachDateListeners,
+  formatDisplayDate,
+  readDateField,
+  injectDatePickerStyles,
+} from './datepicker.js';
 
 // ---------------------------------------------------------------------------
 // CASCADE MODULE
@@ -77,6 +85,70 @@ export function createCascade({ item, onBack, onComplete }) {
 
   async function open(container) {
     container.appendChild(el);
+
+    // Attach delegated listeners once on open — before any render.
+    // Using open() guarantees this runs exactly once regardless of render flow.
+    el.addEventListener('click', e => {
+      const done = e.target.closest('.cascade-done');
+      if (done) {
+        const currentRoute = cascade.context._currentRoute || null;
+        renderer.complete(cascade.context, currentRoute, done.dataset);
+        close();
+        onComplete?.();
+        return;
+      }
+      const link = e.target.closest('.cascade-link');
+      if (link) {
+        const url = link.dataset.url;
+        if (url) window.open(url, '_blank', 'noopener');
+        return;
+      }
+      const dir = e.target.closest('.cascade-directions');
+      if (dir) {
+        window.open(`https://maps.google.com/?q=${encodeURIComponent(dir.dataset.address)}`, '_blank', 'noopener');
+        return;
+      }
+      const call = e.target.closest('.cascade-call');
+      if (call) {
+        window.location.href = `tel:${call.dataset.phone}`;
+        return;
+      }
+      const logSave = e.target.closest('.log-service-save-btn');
+      if (logSave) {
+        const dateVal    = el.querySelector('#log-date')?.value.trim()    || new Date().toISOString().split('T')[0];
+        const mileageVal = el.querySelector('#log-mileage')?.value.trim() || '';
+        const typeVal    = el.querySelector('#log-type')?.value.trim()    || 'oil_change';
+        const shopVal    = el.querySelector('#log-shop')?.value.trim()    || '';
+        const notesVal   = el.querySelector('#log-notes')?.value.trim()   || '';
+        const vehicles   = store.get('vehicles') || [];
+        const idx        = vehicles.findIndex(v => v.id === cascade.context.vehicle_id);
+        if (idx >= 0) {
+          vehicles[idx].service_history = vehicles[idx].service_history || [];
+          vehicles[idx].service_history.push({
+            type: typeVal, date: dateVal,
+            mileage: mileageVal ? parseInt(mileageVal, 10) : null,
+            shop: shopVal || vehicles[idx].preferred_shop || null,
+            notes: notesVal || null,
+          });
+          if (mileageVal && parseInt(mileageVal, 10) > (vehicles[idx].mileage_at_entry || 0)) {
+            vehicles[idx].mileage_at_entry = parseInt(mileageVal, 10);
+            vehicles[idx].mileage_date = dateVal;
+          }
+          store.set('vehicles', vehicles);
+          syncVehicleSignals();
+        }
+        cascade.context._logMode = false;
+        render('detail');
+        return;
+      }
+      const logCancel = e.target.closest('#log-service-cancel');
+      if (logCancel) {
+        cascade.context._logMode = false;
+        render('detail');
+        return;
+      }
+    });
+
     requestAnimationFrame(() => {
       el.style.opacity        = '1';
       el.style.transform      = 'translateX(0)';
@@ -310,6 +382,7 @@ export function createCascade({ item, onBack, onComplete }) {
       return;
     }
     if (cascade.type === 'maintenance_detail') {
+      attachDateListeners(el); // wire date picker for mt-done-date
       el.querySelectorAll('.task-editable-line').forEach(row => {
         row.addEventListener('click', () => {
           if (row.querySelector('input')) return;
@@ -319,25 +392,33 @@ export function createCascade({ item, onBack, onComplete }) {
           const valueDiv = row.querySelector('.task-editable-value');
           const current  = valueDiv?.innerText?.replace(/[—]/g, '').trim() || '';
 
+          if (type === 'date') {
+            const pickerId = 'task-date-' + taskId + '-' + field;
+            const isoVal   = (() => {
+              if (!current) return '';
+              const d = new Date(current);
+              return isNaN(d) ? '' : d.toISOString().split('T')[0];
+            })();
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'width:100%;';
+            wrap.innerHTML = buildDateField(pickerId, '', isoVal);
+            if (valueDiv) valueDiv.replaceWith(wrap);
+            attachDateListeners(wrap);
+            const hidden = wrap.querySelector('#' + pickerId);
+            if (hidden) {
+              hidden.addEventListener('change', () => {
+                saveTaskField(taskId, field, hidden.value);
+                render('detail');
+              });
+            }
+            return;
+          }
+
           const input = document.createElement('input');
           input.type  = 'text';
-          if (type === 'date' && current) {
-            const d = new Date(current);
-            if (!isNaN(d)) input.value = d.toISOString().split('T')[0];
-            else input.value = current;
-          } else {
-            input.value = current;
-          }
-          input.placeholder = type === 'date' ? 'e.g. 2025-01-15' : '';
-          input.style.cssText = `
-            width:100%;box-sizing:border-box;
-            background:rgba(240,235,218,0.06);
-            border:none;border-bottom:0.5px solid rgba(210,160,60,0.4);
-            padding:4px 2px;
-            font-family:var(--font-sans);font-weight:300;
-            font-size:14px;color:rgba(240,235,218,0.88);
-            outline:none;
-          `;
+          input.value = current;
+          input.placeholder = '';
+          input.style.cssText = 'width:100%;box-sizing:border-box;background:rgba(240,235,218,0.06);border:none;border-bottom:0.5px solid rgba(210,160,60,0.4);padding:4px 2px;font-family:var(--font-sans);font-weight:300;font-size:14px;color:rgba(240,235,218,0.88);outline:none;';
           if (valueDiv) valueDiv.replaceWith(input);
           input.focus();
           const save = () => { saveTaskField(taskId, field, input.value.trim()); render('detail'); };
@@ -348,14 +429,56 @@ export function createCascade({ item, onBack, onComplete }) {
         row.addEventListener('mouseleave', () => row.style.background = 'transparent');
       });
 
-      // Mark done
+      // Mark done — reads the date field, updates task, recalculates next_due
       el.querySelectorAll('.cascade-done').forEach(btn => {
         btn.addEventListener('click', () => {
-          maintenanceDetailRenderer.complete = maintenanceTaskRenderer.complete;
-          maintenanceTaskRenderer.complete(cascade.context, 'detail', {});
+          const tasks   = store.get('maintenance_tasks') || [];
+          const idx     = tasks.findIndex(t => t.id === cascade.context.task_id);
+          if (idx >= 0) {
+            const doneDate = readDateField(el, 'mt-done-date')
+              || new Date().toISOString().split('T')[0];
+            tasks[idx].last_done = doneDate;
+            if (tasks[idx].interval_days) {
+              const next = new Date(doneDate);
+              next.setDate(next.getDate() + tasks[idx].interval_days);
+              tasks[idx].next_due = next.toISOString().split('T')[0];
+            }
+            store.set('maintenance_tasks', tasks);
+          }
           close(); onComplete?.();
         });
       });
+
+      // Edit task — opens maintenance intake pre-filled with existing task data
+      const editBtn = el.querySelector('#task-edit');
+      if (editBtn) {
+        editBtn.addEventListener('click', () => {
+          const tasks = store.get('maintenance_tasks') || [];
+          const task  = tasks.find(t => t.id === editBtn.dataset.taskId);
+          if (!task) return;
+          const prefilled = {
+            step:           'label',
+            label:          task.label          || '',
+            notes:          task.notes          || '',
+            interval_days:  task.interval_days  ? String(task.interval_days) : '',
+            interval_label: task.interval_label || '',
+            last_done:      task.last_done      || '',
+            _editingTaskId: task.id,
+          };
+          const editItem = {
+            id:    'maintenance_edit_' + task.id,
+            title: task.label || 'Edit task',
+            body:  'Update this task',
+            cascade: { type: 'maintenance_intake', context: { _mState: prefilled } },
+          };
+          const editPanel = createCascade({
+            item: editItem,
+            onBack: () => {},
+            onComplete: () => { close(); onComplete?.(); },
+          });
+          if (editPanel) editPanel.open(document.getElementById('app') || el);
+        });
+      }
 
       // Delete task
       const delBtn = el.querySelector('#task-delete');
@@ -374,7 +497,7 @@ export function createCascade({ item, onBack, onComplete }) {
       const s = cascade.context._mState || (cascade.context._mState = { step: 'label' });
 
       // Wire calendar picker for last_done step
-      attachCalendarListeners(el);
+      attachDateListeners(el);
 
       const proceedBtn = el.querySelector('#m-proceed');
       if (proceedBtn) {
@@ -452,7 +575,7 @@ export function createCascade({ item, onBack, onComplete }) {
       if (cascade.context._logMode) {
         const saveBtn = el.querySelector('#log-service-save');
         if (saveBtn) {
-          attachCalendarListeners(el); // wire log-date calendar picker
+          attachDateListeners(el); // wire log-date calendar picker
           saveBtn.addEventListener('click', () => {
             const dateVal    = el.querySelector('#log-date')?.value.trim()    || new Date().toISOString().split('T')[0];
             const mileageVal = el.querySelector('#log-mileage')?.value.trim() || '';
@@ -474,6 +597,7 @@ export function createCascade({ item, onBack, onComplete }) {
                 vehicles[idx].mileage_date = dateVal;
               }
               store.set('vehicles', vehicles);
+              syncVehicleSignals(); // update calendar signals after service log
             }
             cascade.context._logMode = false;
             render('detail');
@@ -629,35 +753,37 @@ export function createCascade({ item, onBack, onComplete }) {
           const valueDiv  = row.querySelector('.editable-value');
           const currentText = valueDiv?.innerText?.replace(/[—]/g, '').trim() || '';
 
-          const input = document.createElement('input');
-          input.type  = type === 'date' ? 'text' : 'text';
-          if (type === 'date' && currentText) {
-            // Try to parse display date back to ISO
-            const d = new Date(currentText);
-            if (!isNaN(d)) input.value = d.toISOString().split('T')[0];
-            else input.value = currentText;
-          } else {
-            // Strip trailing ' km' or similar for numeric fields
-            input.value = currentText.replace(/[\s,km]+$/i, '').replace(/,/g, '');
+          if (type === 'date') {
+            const pickerId = 'editable-date-' + vehicleId + '-' + field;
+            const isoVal   = (() => {
+              if (!currentText) return '';
+              const d = new Date(currentText);
+              return isNaN(d) ? '' : d.toISOString().split('T')[0];
+            })();
+            const wrap = document.createElement('div');
+            wrap.style.cssText = 'width:100%;';
+            wrap.innerHTML = buildDateField(pickerId, '', isoVal);
+            if (valueDiv) valueDiv.replaceWith(wrap);
+            attachDateListeners(wrap);
+            const hidden = wrap.querySelector('#' + pickerId);
+            if (hidden) {
+              hidden.addEventListener('change', () => {
+                saveVehicleField(vehicleId, field, hidden.value);
+                render('detail');
+              });
+            }
+            return;
           }
-          input.placeholder = type === 'date' ? 'e.g. 2025-01-15' : '';
-          input.style.cssText = `
-            width:100%;box-sizing:border-box;
-            background:rgba(240,235,218,0.06);
-            border:none;border-bottom:0.5px solid rgba(210,160,60,0.4);
-            padding:4px 2px;
-            font-family:var(--font-sans);font-weight:300;
-            font-size:14px;letter-spacing:0.03em;
-            color:rgba(240,235,218,0.88);
-            outline:none;
-          `;
 
+          const input = document.createElement('input');
+          input.type  = 'text';
+          input.value = currentText.replace(/[\s,km]+$/i, '').replace(/,/g, '');
+          input.placeholder = '';
+          input.style.cssText = 'width:100%;box-sizing:border-box;background:rgba(240,235,218,0.06);border:none;border-bottom:0.5px solid rgba(210,160,60,0.4);padding:4px 2px;font-family:var(--font-sans);font-weight:300;font-size:14px;letter-spacing:0.03em;color:rgba(240,235,218,0.88);outline:none;';
           if (valueDiv) valueDiv.replaceWith(input);
           input.focus();
-
           const save = () => {
-            const newVal = input.value.trim();
-            saveVehicleField(vehicleId, field, newVal);
+            saveVehicleField(vehicleId, field, input.value.trim());
             render('detail');
           };
           input.addEventListener('blur',    save);
@@ -722,7 +848,7 @@ export function createCascade({ item, onBack, onComplete }) {
           `;
           summary.style.display = 'none';
           form.style.display    = 'block';
-          attachCalendarListeners(form);
+          attachDateListeners(form);
 
           form.querySelector('.h-save').addEventListener('click', (e) => {
             e.stopPropagation();
@@ -772,38 +898,7 @@ export function createCascade({ item, onBack, onComplete }) {
       return;
     }
 
-    // Done buttons
-    el.querySelectorAll('.cascade-done').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const update = btn.dataset;
-        renderer.complete(cascade.context, state.route, update);
-        close();
-        onComplete?.();
-      });
-    });
 
-    // External links
-    el.querySelectorAll('.cascade-link').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const url = btn.dataset.url;
-        if (url) window.open(url, '_blank', 'noopener');
-      });
-    });
-
-    // Direction links
-    el.querySelectorAll('.cascade-directions').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const addr = encodeURIComponent(btn.dataset.address);
-        window.open(`https://maps.google.com/?q=${addr}`, '_blank', 'noopener');
-      });
-    });
-
-    // Phone links
-    el.querySelectorAll('.cascade-call').forEach(btn => {
-      btn.addEventListener('click', () => {
-        window.location.href = `tel:${btn.dataset.phone}`;
-      });
-    });
   }
 
   return { open, close };
@@ -962,224 +1057,7 @@ function injectCascadeKeyframes() {
 }
 injectCascadeKeyframes();
 
-// ---------------------------------------------------------------------------
-// CALENDAR PICKER
-// Shared inline calendar widget. Renders above a text input so both paths work.
-// Usage: buildDateField(id, label, isoValue, opts)
-// Returns HTML string. Attach listeners via attachCalendarListeners(el).
-// ---------------------------------------------------------------------------
-
-function buildDateField(id, label, isoValue = '', opts = {}) {
-  const displayVal = isoValue ? formatDetailDate(isoValue) : '';
-  const optStr     = opts.optional ? ' <span style="color:rgba(240,235,218,0.15);">— optional</span>' : '';
-  return `
-    <div class="ylu-date-field" data-field-id="${id}" style="margin-bottom:20px;">
-      <div style="
-        font-family:var(--font-sans);font-weight:200;
-        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
-        color:rgba(240,235,218,0.3);margin-bottom:8px;
-      ">${label}${optStr}</div>
-
-      <!-- Text input — always present -->
-      <input
-        id="${id}-text"
-        class="intake-field ylu-date-text"
-        type="text"
-        placeholder="e.g. Jan 2025 or 2025-01-15"
-        value="${displayVal}"
-        autocomplete="off"
-        style="
-          width:100%;box-sizing:border-box;
-          background:rgba(240,235,218,0.04);
-          border:0.5px solid rgba(240,235,218,0.12);
-          border-radius:2px 2px 0 0;
-          padding:13px 16px;
-          font-family:var(--font-sans);font-weight:300;
-          font-size:15px;letter-spacing:0.02em;
-          color:rgba(240,235,218,0.88);
-          outline:none;-webkit-appearance:none;
-          border-bottom:none;
-        "
-        onfocus="this.style.borderColor='rgba(240,235,218,0.3)'"
-        onblur="this.style.borderColor='rgba(240,235,218,0.12)'"
-      />
-
-      <!-- Calendar toggle bar -->
-      <button class="ylu-cal-toggle" data-target="${id}" style="
-        width:100%;box-sizing:border-box;
-        background:rgba(240,235,218,0.02);
-        border:0.5px solid rgba(240,235,218,0.12);
-        border-top:none;
-        border-radius:0 0 2px 2px;
-        padding:7px 16px;
-        display:flex;align-items:center;gap:8px;
-        font-family:var(--font-sans);font-weight:200;
-        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
-        color:rgba(240,235,218,0.25);
-        cursor:pointer;transition:all 0.15s ease;
-        text-align:left;
-      "
-      onmouseenter="this.style.color='rgba(240,235,218,0.5)';this.style.background='rgba(240,235,218,0.04)'"
-      onmouseleave="this.style.color='rgba(240,235,218,0.25)';this.style.background='rgba(240,235,218,0.02)'"
-      >
-        <span style="font-size:12px;">📅</span> pick a date
-      </button>
-
-      <!-- Calendar panel — hidden by default -->
-      <div id="${id}-cal" class="ylu-cal-panel" style="display:none;
-        background:rgba(20,18,14,0.97);
-        border:0.5px solid rgba(240,235,218,0.1);
-        border-top:none;border-radius:0 0 4px 4px;
-        padding:14px;
-      ">
-        <!-- Nav row -->
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <button class="ylu-cal-prev" data-target="${id}" style="
-            font-family:var(--font-sans);font-weight:200;font-size:14px;
-            color:rgba(240,235,218,0.4);cursor:pointer;padding:4px 8px;
-            transition:color 0.15s ease;
-          "
-          onmouseenter="this.style.color='rgba(240,235,218,0.88)'"
-          onmouseleave="this.style.color='rgba(240,235,218,0.4)'"
-          >‹</button>
-          <div class="ylu-cal-month-label" data-target="${id}" style="
-            font-family:var(--font-sans);font-weight:300;
-            font-size:11px;letter-spacing:0.18em;text-transform:uppercase;
-            color:rgba(240,235,218,0.55);
-          "></div>
-          <button class="ylu-cal-next" data-target="${id}" style="
-            font-family:var(--font-sans);font-weight:200;font-size:14px;
-            color:rgba(240,235,218,0.4);cursor:pointer;padding:4px 8px;
-            transition:color 0.15s ease;
-          "
-          onmouseenter="this.style.color='rgba(240,235,218,0.88)'"
-          onmouseleave="this.style.color='rgba(240,235,218,0.4)'"
-          >›</button>
-        </div>
-        <!-- Day-of-week headers -->
-        <div class="ylu-cal-grid" style="margin-bottom:4px;">
-          ${['S','M','T','W','T','F','S'].map(d => `
-            <div style="
-              font-family:var(--font-sans);font-weight:200;
-              font-size:9px;letter-spacing:0.15em;text-transform:uppercase;
-              color:rgba(240,235,218,0.2);
-              display:flex;align-items:center;justify-content:center;
-              padding:2px 0;
-            ">${d}</div>
-          `).join('')}
-        </div>
-        <!-- Day grid — populated by JS -->
-        <div class="ylu-cal-days ylu-cal-grid" data-target="${id}"></div>
-      </div>
-
-      <!-- Hidden ISO value store — read by intake handlers -->
-      <input id="${id}" type="hidden" value="${isoValue}" />
-    </div>
-  `;
-}
-
-// Attaches calendar interaction to all .ylu-cal-toggle buttons within el.
-// Call once after any render that contains buildDateField() output.
-function attachCalendarListeners(el) {
-  el.querySelectorAll('.ylu-cal-toggle').forEach(toggle => {
-    if (toggle._calInit) return;
-    toggle._calInit = true;
-    const targetId  = toggle.dataset.target;
-    const panel     = el.querySelector(`#${targetId}-cal`);
-    const textInput = el.querySelector(`#${targetId}-text`);
-    const hidden    = el.querySelector(`#${targetId}`);
-    if (!panel || !textInput || !hidden) return;
-
-    // Calendar state
-    const state = { year: 0, month: 0 };
-
-    function parseCurrentValue() {
-      const iso = hidden.value;
-      if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {
-        const d = new Date(iso + 'T12:00:00');
-        return isNaN(d) ? null : d;
-      }
-      return null;
-    }
-
-    function initMonth() {
-      const d = parseCurrentValue() || new Date();
-      state.year  = d.getFullYear();
-      state.month = d.getMonth();
-    }
-
-    function renderCalendar() {
-      const monthNames = ['January','February','March','April','May','June',
-                          'July','August','September','October','November','December'];
-      const label = el.querySelector(`.ylu-cal-month-label[data-target="${targetId}"]`);
-      if (label) label.textContent = `${monthNames[state.month]} ${state.year}`;
-
-      const grid      = el.querySelector(`.ylu-cal-days[data-target="${targetId}"]`);
-      if (!grid) return;
-      const today     = new Date();
-      const selected  = parseCurrentValue();
-      const firstDay  = new Date(state.year, state.month, 1).getDay();
-      const daysInMonth = new Date(state.year, state.month + 1, 0).getDate();
-
-      let html = '';
-      for (let i = 0; i < firstDay; i++) {
-        html += `<div class="ylu-cal-day empty"></div>`;
-      }
-      for (let d = 1; d <= daysInMonth; d++) {
-        const isToday    = today.getFullYear() === state.year && today.getMonth() === state.month && today.getDate() === d;
-        const isSelected = selected && selected.getFullYear() === state.year && selected.getMonth() === state.month && selected.getDate() === d;
-        const iso = `${state.year}-${String(state.month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        html += `<div class="ylu-cal-day${isToday ? ' today' : ''}${isSelected ? ' selected' : ''}"
-          data-iso="${iso}" data-target="${targetId}">${d}</div>`;
-      }
-      grid.innerHTML = html;
-
-      // Day click listeners
-      grid.querySelectorAll('.ylu-cal-day[data-iso]').forEach(day => {
-        day.addEventListener('click', () => {
-          const iso = day.dataset.iso;
-          hidden.value    = iso;
-          textInput.value = formatDetailDate(iso);
-          panel.style.display = 'none';
-          toggle.style.display = '';
-          renderCalendar(); // re-render to show selection
-          // Fire change so intake handlers can read the value
-          hidden.dispatchEvent(new Event('change', { bubbles: true }));
-        });
-      });
-    }
-
-    // Toggle open/close
-    toggle.addEventListener('click', () => {
-      const isOpen = panel.style.display !== 'none';
-      if (isOpen) {
-        panel.style.display = 'none';
-      } else {
-        initMonth();
-        panel.style.display = 'block';
-        renderCalendar();
-      }
-    });
-
-    // Prev/next month
-    const prev = el.querySelector(`.ylu-cal-prev[data-target="${targetId}"]`);
-    const next = el.querySelector(`.ylu-cal-next[data-target="${targetId}"]`);
-    if (prev) prev.addEventListener('click', e => { e.stopPropagation(); state.month--; if (state.month < 0) { state.month = 11; state.year--; } renderCalendar(); });
-    if (next) next.addEventListener('click', e => { e.stopPropagation(); state.month++; if (state.month > 11) { state.month = 0; state.year++; } renderCalendar(); });
-
-    // Text input — parse on blur and sync hidden value
-    textInput.addEventListener('blur', () => {
-      const raw = textInput.value.trim();
-      if (!raw) { hidden.value = ''; return; }
-      const d = new Date(raw);
-      if (!isNaN(d)) {
-        hidden.value = d.toISOString().split('T')[0];
-        textInput.value = formatDetailDate(hidden.value);
-        renderCalendar();
-      }
-    });
-  });
-}
+// buildDateField and attachDateListeners imported from datepicker.js
 
 // ---------------------------------------------------------------------------
 // HC-1 — VEHICLE REGISTRATION
@@ -1426,7 +1304,7 @@ const vehicleServiceRenderer = {
       try {
         const data  = await dataPromise;
         const inner = document.getElementById(loadingId);
-        if (inner) inner.innerHTML = buildServiceRouteHTML(route, data, name);
+        if (inner) inner.innerHTML = buildServiceRouteHTML(route, data, name, context);
         attachDynamicListeners();
       } catch (err) {
         const inner = document.getElementById(loadingId);
@@ -1444,11 +1322,12 @@ const vehicleServiceRenderer = {
       return { ...v, service_due: update.new_service_due || null };
     });
     store.set('vehicles', updated);
+    syncVehicleSignals(); // retire overdue signal, write next service signal
     logCascadeComplete('vehicle_service', context.vehicle_id, route);
   },
 };
 
-function buildServiceRouteHTML(route, data, vehicleName) {
+function buildServiceRouteHTML(route, data, vehicleName, context = {}) {
   const sections = [];
 
   if (route === 'diy') {
@@ -1475,30 +1354,34 @@ function buildServiceRouteHTML(route, data, vehicleName) {
   }
 
   if (route === 'dealer') {
-    if (data.dealer_name)    sections.push(buildDetailRow('Dealer', `${data.dealer_name}<br><span style="color:rgba(240,235,218,0.4);font-size:12px;">${data.dealer_address || ''}</span>`));
-    if (data.dealer_hours)   sections.push(buildDetailRow('Hours', data.dealer_hours, { dim: true }));
-    if (data.dealer_phone)   sections.push(buildDetailRow('Phone', data.dealer_phone, { dim: true }));
-    sections.push(buildDetailRow('Mention', `${vehicleName} · ${data.service_type_label || 'Service due'} · current mileage`));
+    if (data.dealer_name) sections.push(buildDetailRow('Dealer', data.dealer_name + (data.dealer_address ? '<br><span style="color:rgba(240,235,218,0.4);font-size:12px;">' + data.dealer_address + '</span>' : '')));
+    if (data.dealer_hours) sections.push(buildDetailRow('Hours', data.dealer_hours, { dim: true }));
+    if (data.dealer_phone) sections.push(buildDetailRow('Phone', data.dealer_phone, { dim: true }));
+    sections.push(buildDetailRow('Mention', vehicleName + ' · ' + (data.service_type_label || 'Service due') + ' · current mileage'));
 
-    const dirBtn   = data.dealer_address ? buildActionButton('Directions', { class: 'cascade-directions', dataAttrs: `data-address="${data.dealer_address}"` }) : '';
-    const callBtn  = data.dealer_phone   ? buildActionButton('Call', { class: 'cascade-call', dataAttrs: `data-phone="${data.dealer_phone}"` }) : '';
-    const bookBtn  = data.booking_url    ? buildActionButton('Book Online', { primary: true, class: 'cascade-link', dataAttrs: `data-url="${data.booking_url}"` }) : '';
+    const dealerSearch = data.dealer_address || (vehicleName + ' dealer service');
+    const dirBtn  = data.dealer_address
+      ? buildActionButton('Directions', { class: 'cascade-directions', dataAttrs: 'data-address="' + data.dealer_address + '"' })
+      : buildActionButton('Find nearby', { class: 'cascade-link', dataAttrs: 'data-url="https://www.google.com/maps/search/' + encodeURIComponent(dealerSearch) + '"' });
+    const callBtn = data.dealer_phone ? buildActionButton('Call', { class: 'cascade-call', dataAttrs: 'data-phone="' + data.dealer_phone + '"' }) : '';
+    const bookBtn = data.booking_url  ? buildActionButton('Book Online', { primary: true, class: 'cascade-link', dataAttrs: 'data-url="' + data.booking_url + '"' }) : '';
 
-    return sections.join('') + `
-      <div style="margin-top:24px;display:flex;flex-wrap:wrap;">
-        ${dirBtn}${callBtn}${bookBtn}
-        ${buildDoneButton('Mark done')}
-      </div>
-    `;
+    return sections.join('') + '<div style="margin-top:24px;display:flex;flex-wrap:wrap;">' + dirBtn + callBtn + bookBtn + buildDoneButton('Mark done') + '</div>';
   }
 
   if (route === 'shop') {
-    if (data.shop_name)  sections.push(buildDetailRow('Shop', `${data.shop_name}<br><span style="color:rgba(240,235,218,0.4);font-size:12px;">${data.shop_address || ''}</span>`));
+    const shopName = data.shop_name || context?.preferred_shop || null;
+    if (shopName)        sections.push(buildDetailRow('Shop', shopName));
     if (data.shop_hours) sections.push(buildDetailRow('Hours', data.shop_hours, { dim: true }));
     if (data.shop_phone) sections.push(buildDetailRow('Phone', data.shop_phone, { dim: true }));
 
-    const dirBtn  = data.shop_address ? buildActionButton('Directions', { class: 'cascade-directions', dataAttrs: `data-address="${data.shop_address}"` }) : '';
-    const callBtn = data.shop_phone   ? buildActionButton('Call', { primary: true, class: 'cascade-call', dataAttrs: `data-phone="${data.shop_phone}"` }) : '';
+    const searchQuery = data.shop_address
+      ? data.shop_address
+      : shopName ? `${shopName} oil change` : 'oil change near me';
+    const dirBtn  = data.shop_address
+      ? buildActionButton('Directions', { class: 'cascade-directions', dataAttrs: `data-address="${data.shop_address}"` })
+      : buildActionButton('Find nearby', { class: 'cascade-link', dataAttrs: `data-url="https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}"` });
+    const callBtn = data.shop_phone ? buildActionButton('Call', { primary: true, class: 'cascade-call', dataAttrs: `data-phone="${data.shop_phone}"` }) : '';
 
     return sections.join('') + `
       <div style="margin-top:24px;display:flex;flex-wrap:wrap;">
@@ -2444,7 +2327,7 @@ export function attachIntakeListeners(el, cascade, render, close, onComplete) {
   }
 
   // Wire calendar pickers for any date fields in current step
-  attachCalendarListeners(el);
+  attachDateListeners(el);
 
   // Skip button — skips optional step
   const skipBtn = el.querySelector('#intake-skip');
@@ -2953,6 +2836,17 @@ function saveVehicleField(vehicleId, field, value) {
   // Strip display formatting for numeric fields
   const numVal = parseFloat(value.replace(/[^0-9.]/g, ''));
 
+  // Normalize date fields to ISO YYYY-MM-DD before storing.
+  // The date picker writes ISO via the hidden input, but display strings can
+  // sneak in from old tap-to-edit paths or direct store edits.
+  const DATE_FIELDS = ['mileage_date','service_due','registration_expiry','insurance_expiry'];
+  if (DATE_FIELDS.includes(field)) {
+    if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const parsed = new Date(value);
+      value = isNaN(parsed) ? '' : parsed.toISOString().split('T')[0];
+    }
+  }
+
   switch (field) {
     case 'mileage_at_entry':      v.mileage_at_entry      = isNaN(numVal) ? value : numVal; break;
     case 'mileage_date':          v.mileage_date           = value; break;
@@ -3008,6 +2902,8 @@ function saveVehicleField(vehicleId, field, value) {
   }
 
   store.set('vehicles', vehicles);
+  // Sync calendar signals — date fields (reg, insurance, service_due) write to calendar
+  syncVehicleSignals();
 }
 
 // Shared input style for inline history edit form
@@ -3110,62 +3006,7 @@ function buildLogServiceHTML(v) {
       ">${typeOptions}</select>
     </div>
 
-    <div style="margin-bottom:18px;">
-      <div style="
-        font-family:var(--font-sans);font-weight:200;
-        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
-        color:rgba(240,235,218,0.3);margin-bottom:8px;
-      ">Date</div>
-      <input id="log-date-text" class="intake-field ylu-date-text" type="text"
-        placeholder="e.g. Jan 2025 or 2025-01-15"
-        value="${formatDetailDate(today)}"
-        autocomplete="off"
-        style="
-          width:100%;box-sizing:border-box;
-          background:rgba(240,235,218,0.04);
-          border:0.5px solid rgba(240,235,218,0.12);
-          border-radius:2px 2px 0 0;
-          padding:13px 16px;
-          font-family:var(--font-sans);font-weight:300;
-          font-size:15px;letter-spacing:0.02em;
-          color:rgba(240,235,218,0.85);
-          outline:none;-webkit-appearance:none;
-          border-bottom:none;
-        "
-        onfocus="this.style.borderColor='rgba(240,235,218,0.3)'"
-        onblur="this.style.borderColor='rgba(240,235,218,0.12)'"
-      />
-      <button class="ylu-cal-toggle" data-target="log-date" style="
-        width:100%;box-sizing:border-box;
-        background:rgba(240,235,218,0.02);
-        border:0.5px solid rgba(240,235,218,0.12);border-top:none;
-        border-radius:0 0 2px 2px;
-        padding:7px 16px;display:flex;align-items:center;gap:8px;
-        font-family:var(--font-sans);font-weight:200;
-        font-size:10px;letter-spacing:0.2em;text-transform:uppercase;
-        color:rgba(240,235,218,0.25);cursor:pointer;transition:all 0.15s ease;text-align:left;
-      "
-      onmouseenter="this.style.color='rgba(240,235,218,0.5)';this.style.background='rgba(240,235,218,0.04)'"
-      onmouseleave="this.style.color='rgba(240,235,218,0.25)';this.style.background='rgba(240,235,218,0.02)'"
-      ><span style="font-size:12px;">📅</span> pick a date</button>
-      <div id="log-date-cal" class="ylu-cal-panel" style="display:none;
-        background:rgba(20,18,14,0.97);border:0.5px solid rgba(240,235,218,0.1);
-        border-top:none;border-radius:0 0 4px 4px;padding:14px;
-      ">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <button class="ylu-cal-prev" data-target="log-date" style="font-family:var(--font-sans);font-weight:200;font-size:14px;color:rgba(240,235,218,0.4);cursor:pointer;padding:4px 8px;transition:color 0.15s ease;"
-          onmouseenter="this.style.color='rgba(240,235,218,0.88)'" onmouseleave="this.style.color='rgba(240,235,218,0.4)'">‹</button>
-          <div class="ylu-cal-month-label" data-target="log-date" style="font-family:var(--font-sans);font-weight:300;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:rgba(240,235,218,0.55);"></div>
-          <button class="ylu-cal-next" data-target="log-date" style="font-family:var(--font-sans);font-weight:200;font-size:14px;color:rgba(240,235,218,0.4);cursor:pointer;padding:4px 8px;transition:color 0.15s ease;"
-          onmouseenter="this.style.color='rgba(240,235,218,0.88)'" onmouseleave="this.style.color='rgba(240,235,218,0.4)'">›</button>
-        </div>
-        <div class="ylu-cal-grid" style="margin-bottom:4px;">
-          ${['S','M','T','W','T','F','S'].map(d => `<div style="font-family:var(--font-sans);font-weight:200;font-size:9px;letter-spacing:0.15em;text-transform:uppercase;color:rgba(240,235,218,0.2);display:flex;align-items:center;justify-content:center;padding:2px 0;">${d}</div>`).join('')}
-        </div>
-        <div class="ylu-cal-days ylu-cal-grid" data-target="log-date"></div>
-      </div>
-      <input id="log-date" type="hidden" value="${today}" />
-    </div>
+    ${buildDateField('log-date', 'Date', today, { past: true })}
 
     <div style="margin-bottom:18px;">
       <div style="
@@ -3235,7 +3076,7 @@ function buildLogServiceHTML(v) {
     </div>
 
     <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;">
-      ${buildActionButton('Save', { primary: true, class: '', dataAttrs: 'id="log-service-save"' })}
+      ${buildActionButton('Save', { primary: true, class: 'log-service-save-btn', dataAttrs: 'id="log-service-save"' })}
       <button id="log-service-cancel" style="
         margin-left:12px;
         font-family:var(--font-sans);font-weight:200;
@@ -3328,26 +3169,8 @@ const maintenanceTaskRenderer = {
     return `
       ${sections}
       <div style="margin-top:28px;">
-        <div style="
-          font-family:var(--font-sans);font-weight:200;font-size:11px;
-          letter-spacing:0.08em;color:rgba(240,235,218,0.35);margin-bottom:10px;
-        ">When was this done?</div>
-        <input
-          id="mt-done-date"
-          type="text"
-          value="${todayIso}"
-          maxlength="10"
-          placeholder="YYYY-MM-DD"
-          style="
-            background:rgba(240,235,218,0.05);border:0.5px solid rgba(240,235,218,0.18);
-            border-radius:2px;padding:10px 14px;
-            font-family:var(--font-sans);font-weight:300;font-size:13px;
-            letter-spacing:0.04em;color:rgba(240,235,218,0.8);
-            width:100%;box-sizing:border-box;margin-bottom:14px;
-            -webkit-appearance:none;outline:none;
-          "
-        />
-        <div style="display:flex;flex-wrap:wrap;gap:10px;">
+        ${buildDateField('mt-done-date', 'When was this done?', todayIso, { past: true })}
+        <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:4px;">
           ${buildDoneButton('Confirm')}
         </div>
       </div>
@@ -3359,16 +3182,12 @@ const maintenanceTaskRenderer = {
     const idx   = tasks.findIndex(t => t.id === context.task_id);
     if (idx < 0) return;
 
-    // Read the date the user entered — fall back to today if blank or malformed
-    const inputEl  = document.getElementById('mt-done-date');
-    const rawDate  = inputEl?.value?.trim();
-    const isValid  = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate);
-    const doneDate = isValid ? rawDate : new Date().toISOString().split('T')[0];
+    const doneDate = readDateField(document, 'mt-done-date')
+      || new Date().toISOString().split('T')[0];
 
     const task     = tasks[idx];
     task.last_done = doneDate;
 
-    // Recalculate next due from the completion date + interval
     if (task.interval_days) {
       const next = new Date(doneDate);
       next.setDate(next.getDate() + task.interval_days);
@@ -3413,7 +3232,6 @@ const maintenanceIntakeRenderer = {
     if (!s) return;
 
     const tasks = store.get('maintenance_tasks') || [];
-    const id    = `mt_${Date.now()}`;
 
     let next_due = null;
     if (s.last_done && s.interval_days) {
@@ -3421,12 +3239,32 @@ const maintenanceIntakeRenderer = {
       d.setDate(d.getDate() + parseInt(s.interval_days, 10));
       next_due = d.toISOString().split('T')[0];
     } else if (s.interval_days) {
-      // No last done — due soon, flag in 7 days as a prompt to check
       const d = new Date();
       d.setDate(d.getDate() + 7);
       next_due = d.toISOString().split('T')[0];
     }
 
+    // Edit mode — update existing task
+    if (s._editingTaskId) {
+      const idx = tasks.findIndex(t => t.id === s._editingTaskId);
+      if (idx >= 0) {
+        tasks[idx] = {
+          ...tasks[idx],
+          label:          s.label          || tasks[idx].label,
+          interval_days:  s.interval_days  ? parseInt(s.interval_days, 10) : tasks[idx].interval_days,
+          interval_label: s.interval_label || tasks[idx].interval_label || null,
+          last_done:      s.last_done      || tasks[idx].last_done      || null,
+          next_due:       next_due         || tasks[idx].next_due       || null,
+          notes:          s.notes !== undefined ? s.notes : tasks[idx].notes,
+        };
+        store.set('maintenance_tasks', tasks);
+        logCascadeComplete('maintenance_intake', s._editingTaskId, 'edited');
+      }
+      return;
+    }
+
+    // New task
+    const id = `mt_${Date.now()}`;
     tasks.push({
       id,
       label:          s.label,
@@ -3734,19 +3572,30 @@ function buildMaintenanceDetailHTML(task) {
     buildTaskEditableLine(task.id, 'tier',            'Tier',           task.tier            || 'caution'),
   ].join('');
 
+  const todayIso = new Date().toISOString().split('T')[0];
   return `
     <div style="margin-bottom:8px;">${lines}</div>
-    <div style="margin-top:24px;display:flex;flex-wrap:wrap;">
-      ${buildDoneButton('Mark done')}
-      <button id="task-delete" data-task-id="${task.id}" style="
-        margin-left:16px;margin-top:28px;
-        font-family:var(--font-sans);font-weight:200;
-        font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
-        color:rgba(240,235,218,0.2);cursor:pointer;transition:color 0.2s ease;
-      "
-      onmouseenter="this.style.color='rgba(240,235,218,0.5)'"
-      onmouseleave="this.style.color='rgba(240,235,218,0.2)'"
-      >remove task</button>
+    <div style="margin-top:28px;">
+      ${buildDateField('mt-done-date', 'When was this done?', todayIso, { past: true })}
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:16px;">
+        ${buildDoneButton('Mark done')}
+        <button id="task-edit" data-task-id="${task.id}" style="
+          margin-top:28px;font-family:var(--font-sans);font-weight:200;
+          font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+          color:rgba(240,235,218,0.2);cursor:pointer;transition:color 0.2s ease;
+        "
+        onmouseenter="this.style.color='rgba(240,235,218,0.55)'"
+        onmouseleave="this.style.color='rgba(240,235,218,0.2)'"
+        >edit</button>
+        <button id="task-delete" data-task-id="${task.id}" style="
+          margin-top:28px;font-family:var(--font-sans);font-weight:200;
+          font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+          color:rgba(240,235,218,0.2);cursor:pointer;transition:color 0.2s ease;
+        "
+        onmouseenter="this.style.color='rgba(240,235,218,0.5)'"
+        onmouseleave="this.style.color='rgba(240,235,218,0.2)'"
+        >remove task</button>
+      </div>
     </div>
   `;
 }
@@ -4695,7 +4544,7 @@ export function attachHealthIntakeListeners(el, cascade, render, close, onComple
   if (!s) return;
 
   // Wire calendar pickers
-  attachCalendarListeners(el);
+  attachDateListeners(el);
 
   // ── Disclaimer ── proceed
   if (s.step === 'disclaimer') {

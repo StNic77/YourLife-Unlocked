@@ -610,19 +610,9 @@ export function buildPrimaryBrief() {
     horizonItems.push({ label: e.title, value: `${days} days`, urgent: false, calendar_date: e.date });
   });
 
-  // Vehicles — upcoming (not overdue) at 15–60 days
-  const vehicles = store.get('vehicles') || [];
-  vehicles.forEach(v => {
-    [
-      { field: v.registration_expiry, label: `${v.name || 'Vehicle'} — Reg` },
-      { field: v.insurance_expiry,    label: `${v.name || 'Vehicle'} — Insurance` },
-      { field: v.service_due,         label: `${v.name || 'Vehicle'} — Service` },
-    ].forEach(({ field, label }) => {
-      if (!field) return;
-      const days = Math.ceil((new Date(field) - nowMs) / (1000 * 60 * 60 * 24));
-      if (days > 14 && days <= 60) horizonItems.push({ label, value: `${days} days`, urgent: false });
-    });
-  });
+  // Vehicles — surface via calendar domain signals only (written by syncVehicleSignals).
+  // Reading directly from store.vehicles here caused duplicates when signals were also
+  // present in calAll. The calendar is the authoritative temporal layer.
 
   // Maintenance tasks — 15–60 days (the furnace filter)
   const mainTasks = store.get('maintenance_tasks') || [];

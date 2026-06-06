@@ -7,6 +7,7 @@ import { createHome } from './home.js';
 import { createLocationRequest } from './location.js';
 import { initShape } from './shape.js';
 import { syncHealthSignals } from './health.js';
+import { injectDatePickerStyles } from './datepicker.js';
 
 const app = document.getElementById('app');
 
@@ -397,6 +398,7 @@ async function loadWorlds() {
 }
 
 async function boot() {
+  injectDatePickerStyles();
   let worlds;
   try {
     worlds = await loadWorlds();
@@ -571,10 +573,38 @@ async function boot() {
       },
     ]);
 
-    // urgent_items — intentionally empty for dev=shawn.
-    // Maintenance urgency is derived live from maintenance_tasks by getUrgentItems().
-    // Static entries here cause stale dots that persist after tasks are cleared.
-    store.set('urgent_items', []);
+    // Urgent items — Master Warning and Master Caution
+    // Mazda3 service is the real derived item — surface it explicitly too
+    store.set('urgent_items', [
+      {
+        id:          'shawn_oil_change',
+        object:      'maintenance',
+        domain:      'maintenance',
+        title:       'Mazda3 — Oil change due',
+        body:        'Next at ~271,551 km · late July',
+        snoozable:   true,
+        snoozed_until: null,
+        tier:        'caution',
+        cascade: {
+          type:    'vehicle_service',
+          context: { vehicle_id: 'v_shawn_1', service_type: 'oil_change' },
+        },
+      },
+      {
+        id:          'shawn_throttle_body',
+        object:      'maintenance',
+        domain:      'maintenance',
+        title:       'Mazda3 — Throttle body clean',
+        body:        'Flagged — not yet done',
+        snoozable:   true,
+        snoozed_until: null,
+        tier:        'caution',
+        cascade: {
+          type:    'vehicle_service',
+          context: { vehicle_id: 'v_shawn_1', service_type: 'throttle_body' },
+        },
+      },
+    ]);
 
     store.set('capture_notes', [
       { text: 'Call about the deck permit', ts: hoursAgo(48) },

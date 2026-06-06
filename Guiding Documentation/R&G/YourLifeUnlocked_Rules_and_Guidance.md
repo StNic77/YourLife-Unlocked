@@ -1,6 +1,6 @@
 # YOUR LIFE: UNLOCKED
 ## Rules, Principles & Design Guidance
-*Living Document — Updated Each Session | Last Revised: June 6, 2026 (Session 36 Debug) | Authoritative Consolidated Version | Confidential*
+*Living Document — Updated Each Session | Last Revised: June 6, 2026 (Session 37) | Authoritative Consolidated Version | Confidential*
 
 ---
 
@@ -42,7 +42,7 @@ Before responding to any agenda item, design question, or build request, Claude 
 - The last three to four session handoffs
 - This Rules and Guidance document
 
-If Claude has not done this, Shawn stops the session until it is done. This is non-negotiable. The project knowledge is the authority. Working from memory or momentum produces drift. Drift compounds. Thirty-six sessions of coherent work depends on this standard being held at the start of every session.
+If Claude has not done this, Shawn stops the session until it is done. This is non-negotiable. The project knowledge is the authority. Working from memory or momentum produces drift. Drift compounds. Thirty-seven sessions of coherent work depends on this standard being held at the start of every session.
 
 **The six check-in questions:**
 
@@ -118,8 +118,9 @@ Before approving any build, feature, or design decision, run it through these.
 | **Cascade Depth Rule** | More than four fields → full cascade. Four or fewer → editable in place. |
 | **ATAK Authority Rule** | Does every ATAK tap route to a domain? The domain has depth. The ATAK has the picture. |
 | **Alert Architecture** | Is this a Warning (now) or a Caution (soon)? Never blur the two. |
-| **Date Input Rule** | Is there a date picker? If it's a text input, it's not done. |
+| **Date Input Rule** | Is there a date picker from `datepicker.js`? If it's a text input, it's not done. |
 | **World Voice Rule** | Does this copy pass the trope test, feather test, and Betty test for its world? |
+| **Calendar Contract Rule** | Does this domain signal write to `store.calendar`? If ATAK needs it temporally, it goes through the calendar. |
 
 ---
 
@@ -248,18 +249,18 @@ Every interaction defaults to tappable tiles. The user should never be required 
 ---
 
 ### 2.4b The Date Input Rule
-*(Session 22, updated Session 36)*
+*(Session 22, updated Sessions 36–37)*
 
 > **No date field ships as a text input. All date selection uses the shared picker component.**
 
-The original rule required a calendar picker alongside text entry. Session 36 sharpened this: text-only date inputs are prohibited entirely. The shared picker component (`datepicker.js`) is the only date input across the entire app.
+Text-only date inputs are prohibited entirely. The shared picker component (`datepicker.js`) is the only date input across the entire app. No domain rolls its own date picker. No exceptions.
 
 **The shared component (`datepicker.js`):**
-Built in Session 36 as part of the calendar domain. Features: month grid, decade accordion (tap decade to expand year grid), Go button. Getting to 1985 is four taps from anywhere. Must be extracted into a standalone importable module before any new domain that needs a date field is built. Every domain imports from it — no domain rolls its own date picker.
+Built Session 37. Exports: `buildDateField`, `attachDateListeners`, `formatDisplayDate`, `readDateField`, `injectDatePickerStyles`. Interaction model: display button (no text input), "Today" shortcut, prev/next month nav, month/year label opens jump picker (month grid + decade accordion). Supports `past`, `future`, and `any` modes. CSS injected once on boot via `main.js`.
 
 **Applies to:** all intake flows, all tap-to-edit fields, all cascade forms, all log forms, health appointment dates, vehicle expiry dates, profile editor birthday, all new date fields going forward.
 
-**Current status:** Component exists in `calendar.js`. Extraction to `datepicker.js` is queued — do not build any new date field before extraction is complete.
+**The rule:** Any new date field anywhere imports from `datepicker.js`. Do not build a date field before checking this rule.
 
 ---
 
@@ -490,6 +491,8 @@ The ATAK owns synthesis. No domain synthesises. No domain produces cross-domain 
 - Domain UI (owned by domain files)
 - Calendar entries (owned by calendar.js and the calendar store)
 
+**ATAK reads the calendar for time-based signals — confirmed Session 37.** The ATAK does not read domains directly for temporal data. Domains write well-formed signals to `store.calendar`. The ATAK reads one unified timeline and synthesises. This is the architecture as designed. Deviations produce duplicates — see the Session 37 fix. For non-date-driven urgency (e.g. mileage-based overdue), the ATAK derives conditions inline in `getUrgentItems()` — not by reaching into domain files, but by computing from store fields directly.
+
 **Check:** Before adding any intelligence function to a domain file — does this function need to know about more than one domain to do its job? If yes, it belongs in the ATAK.
 
 ---
@@ -537,6 +540,7 @@ When a domain has time-sensitive data that belongs on the shared timeline, it wr
 - **Deduplication** — a domain checks for an existing signal with its ID before writing. No duplicates.
 - **Retirement** — when the underlying condition resolves (oil change logged, appointment kept, birthday passed), the domain removes its signal from the calendar store. Stale signals are noise. The calendar is always honest.
 - **Pressure classification** — every signal carries a pressure weight: `warning` (deal with this now) or `caution` (deal with this soon) or `info` (awareness only). Consistent with the Alert Architecture in 2.8.
+- **ISO dates only** — signal date fields must be `YYYY-MM-DD`. Non-ISO values are validated and skipped before writing. Display strings must never reach the signal.
 
 **Domain signal registry — current:**
 
@@ -553,7 +557,7 @@ When a domain has time-sensitive data that belongs on the shared timeline, it wr
 
 This registry grows as domains are built. The calendar receives new signal types without modification — the contract is the store shape, not a function call.
 
-**Check:** Before a domain writes to the calendar — does this signal have a deterministic ID? Does a retirement condition exist? Is the pressure classification correct?
+**Check:** Before a domain writes to the calendar — does this signal have a deterministic ID? Does a retirement condition exist? Is the pressure classification correct? Is the date ISO format?
 
 ---
 
@@ -570,6 +574,7 @@ Every domain has its own `.js` file. `home.js` is the host — it renders and ro
 | `maintenance.js` | Built Session 24 |
 | `calendar.js` | Built Session 24 |
 | `health.js` | Built Session 25 |
+| `datepicker.js` | Built Session 37 — shared date picker component |
 | `team.js` | Exists — birthday signals still in `atak.js`, migration flagged |
 
 Violating this creates the same problem we had before the extraction — intelligence and rendering tangled together. New domains follow this pattern without exception.
@@ -664,13 +669,13 @@ SHAPE is not a score. It is not a count of red flags. It is not an alert system.
 
 **The exit trigger.** As the Sanctuary works and decisions are made and actions are taken, the domains start clearing. SHAPE recovers its form. The guidance withdraws proportionally. The room gets quieter.
 
-**SHAPE is not negative.** It holds positive, negative, and neutral — the whole person. The positive (what they've handled well, where they've grown, what's working), the negative (what's piling up, what they're avoiding), and the neutral (the baseline that makes deviations meaningful). You cannot read a person accurately from their problems alone.
+**SHAPE is not negative.** It holds positive, negative, and neutral — the whole person.
 
 **SHAPE holds pattern, not just state:**
 
 - **The baseline** — what this person looks like when life is ordinary. How quickly they typically act. What domains they tend well and which have always been harder. Without the baseline, deviation is invisible.
 - **The trajectory** — the direction of travel over time. Getting better at this or worse. The slope matters as much as the current position.
-- **The inflection points** — the moments where the pattern changed. Where something shifted for better or worse. Inflection points are where the real story lives.
+- **The inflection points** — the moments where the pattern changed. Inflection points are where the real story lives.
 
 **SHAPE has two layers:**
 
@@ -702,8 +707,8 @@ The feeling of arriving: the counsellor's office. Coffee with a trusted friend. 
 **The trigger** — three components, all required, none sufficient alone:
 
 - **Accumulation** — SHAPE watching the shape distort across domains over time. Not one bad week. A pattern building slowly across multiple areas of life simultaneously.
-- **Disengagement** — SHAPE watching the user's relationship with the ATAK change. Not a domain signal — a person signal. A person who has always engaged promptly starting to go quiet. Measured against this person's baseline, not an abstract standard.
-- **Final blow** — A specific moment in the ATAK interaction that SHAPE reads as the line crossed. Dynamic per person. Defined against this person's baseline. The Sanctuary does not open because baseline broke — it opens when something further along has been crossed that SHAPE recognises as significant for this specific person. The final blow lives in the ATAK interaction layer: SHAPE feeds the ATAK, SHAPE interacts with the user on the path to the Sanctuary, and something in that space is the final blow.
+- **Disengagement** — SHAPE watching the user's relationship with the ATAK change. A person who has always engaged promptly starting to go quiet. Measured against this person's baseline, not an abstract standard.
+- **Final blow** — A specific moment in the ATAK interaction that SHAPE reads as the line crossed. Dynamic per person. Defined against this person's baseline.
 
 Threshold elasticity is by design. The architecture is locked. The specific thresholds calibrate through deployment. The Sanctuary must not open too early — premature opening damages trust in the room permanently.
 
@@ -711,46 +716,30 @@ Threshold elasticity is by design. The architecture is locked. The specific thre
 
 - **Move One — The Offer.** The subject is the app, not the user. An offer, not an observation. *"I want to sit with you for a minute."* The exact line belongs to each world's register. It opens a door and stands in it.
 - **Move Two — The Glimpse.** Two things only: the trigger (the pattern SHAPE has been watching) and the final blow (the moment the pattern broke). Everything else held back. The pile is not the point. The person is the point. The glimpse transfers surveillance into safety — the user feels known, not caught.
-- **Move Three — The Permission Ask.** Immediately after the glimpse, control is handed back. *"Do you want to talk about what that's been like?"* The motion: glimpse, then immediately ask what the user wants. Returns agency to a person who has been feeling like they have none.
+- **Move Three — The Permission Ask.** Immediately after the glimpse, control is handed back. *"Do you want to talk about what that's been like?"* Returns agency to a person who has been feeling like they have none.
 
 If the user says no or closes — the Sanctuary waits. It does not guilt. It does not resurface with urgency. It holds.
 
-**The governing frame — seen, not caught.** The Sanctuary names what it sees as load, not failure. The user is carrying too much — not: the user has dropped too much. Both might be technically accurate. Only one is the right frame. Non-negotiable.
+**The governing frame — seen, not caught.** The Sanctuary names what it sees as load, not failure. Non-negotiable.
 
 **The lifecycle** — the Sanctuary is not a session. It is a relationship with a specific hard season.
 - Opens when convergence is detected
 - Stays present across days, possibly weeks
-- Has memory across cycles — remembers what was decided, what was acted on, what wasn't
+- Has memory across cycles
 - Does not reset between conversations
 - Closes when the blast radius has genuinely contracted — not on a timer, not on dismissal
 
 **The interaction model** — OPP, OODA, AIPA shape every exchange as invisible scaffolding. The app guides process, never content. It never tells the user what to decide.
 
-- **Observe** — the app surfaces what it sees. Not a task list. The honest picture of the load.
-- **Orient** — what matters most right now. The one or two things with the widest blast radius.
-- **Decide** — the app holds the space. One question. The user finds their own answer. The Sanctuary handles Observe and Orient. The user owns Decide. The fourth — Act — belongs to life.
-- **Act** — the person leaves with one thing to do. Not five. One.
-- **The loop restarts.** The app watches. Holds if needed.
+**One question per exchange.** Hard constraint, not a guideline.
 
-**One question per exchange.** Hard constraint, not a guideline. Multiple questions are a pile. A pile is what the user came in carrying.
+**The Sanctuary holds silence.** After a question is asked, it waits. The silence is the point.
 
-**The Sanctuary holds silence.** After a question is asked, it waits. It does not elaborate to fill the space. It said the thing. It waits. This is harder to build than it sounds. The silence is the point.
+**The trust boundary.** The Sanctuary's memory does not bleed into the rest of the app. The user must be able to speak in the Sanctuary knowing it stays there.
 
-**The trust boundary.** The Sanctuary's memory does not bleed into the rest of the app. The ATAK does not read exchange history. The domains do not know what was said inside. The user must be able to speak in the Sanctuary knowing it stays there.
+**The governing character.** The Sanctuary AI is a caring watchful friend. Not a therapist. Not a coach. Not a service.
 
-**The user gets stronger.** The frameworks become the user's own pattern over time without ever being named. The Sanctuary withdraws not because it closes but because the person no longer needs it at the same depth. The user does not think "I learned from this app." They think "I handled that." That is the success condition.
-
-**The intimacy gradient in the Sanctuary** — by the time the Sanctuary opens, the interaction must be at inner circle depth. Not warm professional. Not helpful service. Inner circle. The copy, the AI behaviour, the tone — all of it must have earned that register before the door opens.
-
-**The AIPA trigger model — locked Session 28.** The Sanctuary opens when SHAPE detects serious constraint on at least two of three AIPA resources: Time, Attention, Knowledge. Not a count of flags — a resource picture. Time reads from calendar pressure and the gap between commitment and action. Attention reads from the disengagement signal. Knowledge reads from every domain simultaneously — vehicle issues, health signals, relationship changes, life events, pattern deviations, and declared input through "Has something changed?" Everything is signal. The list of Knowledge inputs is not finite.
-
-**Prevention mode and activation mode — locked Session 28.** SHAPE's primary job is to prevent the Sanctuary from being necessary. In prevention mode, SHAPE reads the resource picture continuously and shapes the ATAK brief accordingly — tighter when Time is constrained, simpler when Attention is fragmenting, restorative when Knowledge is degrading. The user never sees this. They just notice the brief feels right. Activation mode is the contingency: when prevention has reached its limit and two of three resources are seriously constrained, the Sanctuary opens. The Sanctuary is the contingency. Prevention is the goal.
-
-**The fortress.** When the Sanctuary opens, the person walks into something built since day zero — from every domain signal, every interaction, every pattern shift, everything the app has witnessed. The AI walks in with a complete picture of a person. Not a checklist. A person.
-
-**The governing character.** The Sanctuary AI is a caring watchful friend. Not a therapist. Not a coach. Not a service. A friend who has been watching, who cares, who knows how to help without taking over. Every decision in the Sanctuary Prompt Brief is governed by one question: would a caring watchful friend do this?
-
-**A full Sanctuary Definition Document has been written (Session 28) and is in the project. An ATAK Definition Document is required before the Sanctuary Prompt Brief is written. Read both before any Sanctuary build begins. No exceptions.**
+**A full Sanctuary Definition Document has been written (Session 28) and is in the project. Read it before any Sanctuary build begins. No exceptions.**
 
 **Check:** Before any Sanctuary interaction is designed — does this feel like inner circle, or does it feel like a service? If there is any hesitation, it is not ready.
 
@@ -765,33 +754,20 @@ This is the governing principle for the "Has something changed?" domain. It is l
 
 The user arrives with something — a feeling, a question, a life event, a thing that won't settle. They speak. SHAPE reads the conversation, extracts the data points, routes them to the right domains, updates the ATAK picture, and watches the signals that follow. The user never categorizes. The user never chooses a path. The conversation is the only action required.
 
-This is the Tending Philosophy running at its highest level. Every other domain requires some user action — an add, a date, a cascade. "Has something changed?" requires nothing except showing up and speaking.
-
 **What the Reflecting Pool is:**
-The persistent conversation layer inside "Has something changed?" The collection point for the humanness. The place where the user can say the thing they haven't said out loud yet — to something that won't flinch, won't tell anyone, and won't think less of them.
-
-The model: the user arrives with a door, not a destination. SHAPE follows the road through questions, not answers. The release, if it comes, is a byproduct of the examination — not the point. SHAPE holds the mirror. It does not hand the user a conclusion.
+The persistent conversation layer inside "Has something changed?" The collection point for the humanness. The place where the user can say the thing they haven't said out loud yet.
 
 **What the Reflecting Pool is not:**
-A journaling tool. A venting space. A place to empty out. A categorization tool. A form with two paths.
+A journaling tool. A venting space. A categorization tool. A form with two paths.
 
 **One door, one conversation:**
-The domain has one door. Behind it — a conversation. No paths. No categories. No filing mechanic. The life event capture is not a separate path — it is a byproduct of the conversation. The user says *"I broke up with my girlfriend and I'm devastated"* — SHAPE extracts the data points, flags the implications, watches the signals — while the user is simply talking. The intelligence does the categorization. The user does none of it.
+No paths. No categories. No filing mechanic. The user speaks. SHAPE extracts. The intelligence does the categorization. The user does none of it.
 
 **Memory — persistent and compressing:**
-The Reflecting Pool persists. Conversations accumulate. SHAPE reads the whole, not just the latest — including the drawer that was opened six weeks ago and never fully resolved, the thing the user came back to three times, the pattern across conversations the user themselves might not have noticed.
+Raw conversations accumulate to a threshold. SHAPE produces a compression. Raw exchanges archive or drop. The compression carries forward. Local storage is the right architecture.
 
-The compression model: raw conversations accumulate to a threshold. SHAPE produces a compression — a short, dense summary of the human picture so far. Raw exchanges archive locally or are dropped. The compression carries forward. The cycle begins again. Local storage is the right architecture — it keeps the most sensitive data in the app on the device, consistent with the privacy promise.
-
-**The threshold — what the user meets:**
-A text box. Above it, one or two plain sentences that describe what this place is and give permission to use it. No trick. No performed invitation. The chat interface is a known shape — the user knows what to do with a text box. The threshold does not reinvent the gesture. It is honest about what this particular conversation is for. Register modulates per world. Function is identical underneath.
-
-**The privacy promise — honest, not overstated:**
+**The privacy promise:**
 *What you share here is used only to help you. It is never sold, never shared, never used for anything other than the conversation you're in.*
-
-The transmission that happens — the API call, the processing — is in service of the user, not the product's commercial interests. The copy does not say "your data never leaves your device" — that is not fully accurate. The honest version: your conversations stay on your device; when the app thinks alongside you, it uses AI privately and does not store or share what you say. The subscription model is the proof. The user pays for this. It does not monetize their pain.
-
-**The HUMINT Collection Principles** — the governing discipline for how SHAPE reads the Reflecting Pool conversation and extracts intelligence — require their own dedicated thinking session before `shape.js` is built. Do not build before that session has happened.
 
 **Check:** Before building anything in this domain — does this require the user to categorize, file, or choose a path? If yes, it is wrong. The user only speaks.
 
@@ -802,9 +778,7 @@ The transmission that happens — the API call, the processing — is in service
 
 > **When a user states a fact about themselves in the reflecting pool, the pool receives it and moves on. It never redirects to settings. It never explains the architecture. The app is listening. That is not the user's concern.**
 
-The pool's job is to receive and ask the next question. SHAPE handles the filing. The pool never breaks this frame by explaining what it can or cannot do with information. The boundary between collection and storage is real — and invisible to the user by design.
-
-**The failure mode (what this rule prevents):** A user says "I am a CAF member and I don't have a BC health card." The pool responds: "This space is for you to think out loud, not a place that updates your app settings or medical info. That kind of change needs to happen through the app's profile or settings directly." This response accurately perceived an architectural boundary and then surfaced it. That is wrong. The boundary is real. The user doesn't need to know it exists.
+The pool's job is to receive and ask the next question. SHAPE handles the filing. The pool never breaks this frame by explaining what it can or cannot do with information.
 
 **Check:** Does the pool response explain the system to the user? If yes, rewrite it.
 
@@ -815,16 +789,11 @@ The pool's job is to receive and ask the next question. SHAPE handles the filing
 
 > **Occupation sector + country + province/state is the full context for any occupation-aware output. No single-country assumptions are ever baked into prompts.**
 
-`occupation_sector` is a category, not a full profile. What it means varies significantly by country — Canadian Armed Forces, US Military, and UK Armed Forces have completely different healthcare systems, benefit structures, pension schemes, and terminology. The app never assumes which country's systems apply based on occupation alone.
+`occupation_sector` is a category, not a full profile. What it means varies significantly by country. The app never assumes which country's systems apply based on occupation alone.
 
 **The governing rule:** Before any occupation-aware cascade output, prompt, or signal is generated, the model reads occupation_sector + country + province together and derives the correct system from that combination.
 
-**Examples:**
-- CAF member in BC → DND medical, SISIP, base facilities, posting cycles
-- US Military member in Texas → TRICARE, VA awareness, PCS cycles
-- NHS healthcare worker in England → NHS pension, occupational health norms
-
-**Applies to:** medical cascade, SHAPE extraction field paths, any future financial or benefit signals, the profile editor downstream, and any AI prompt that produces occupation-aware language.
+**Applies to:** medical cascade, SHAPE extraction field paths, any future financial or benefit signals, and any AI prompt that produces occupation-aware language.
 
 **Check:** Does this prompt assume CAF, TRICARE, NHS, or any other specific system without reading country first? If yes, it is wrong.
 
@@ -840,13 +809,30 @@ SHAPE extracts factual corrections from pool sessions and writes them to the app
 **The CAF test case (the reference implementation):**
 1. User says in pool: "I am a CAF member and I don't have a BC health card"
 2. Per-exchange extraction fires immediately
-3. `military.caf_member = true`, `health.health_coverage = "CAF"`, `health.has_bc_carecard = false`, `health.primary_medical_facility` written
+3. `military.caf_member = true`, `health.health_coverage = "CAF"`, `health.has_bc_carecard = false` written
 4. Next time medical cascade opens: no health card mentioned, base facilities referenced
 5. User never filed anything. They just talked.
 
-**The field path reference table** — both extraction prompts must contain explicit field paths for common facts (birthday, CAF status, occupation, etc.) so the AI knows where to write without guessing. Vague paths silently drop. Explicit paths land correctly.
+**The field path reference table** — both extraction prompts must contain explicit field paths for common facts so the AI knows where to write without guessing. Vague paths silently drop. Explicit paths land correctly.
 
 **Check:** If a user says something factual about themselves in the pool, does the downstream output reflect it on the next cascade open? If not, trace the extraction → write → sync chain.
+
+---
+
+### 2.29 — The Tap Circle Rule
+*(Session 37)*
+
+> **Tap circles reflect current data state. They clear the moment the condition that caused them resolves. No persistence beyond what the data actually says.**
+
+The home screen hotspot tap circles are computed from live store state on every relevant store change. Three states: pulsing red (overdue or urgent), very slow amber pulse (caution window), nothing (all clear). The dot reflects the worst current condition. The moment that condition resolves, the dot updates immediately.
+
+**Implementation rules:**
+- `renderHotspots()` must clear the layer (`layer.innerHTML = ''`) before rebuilding — failure to do so causes stale circles to stack on top of new correct ones
+- `urgentByObj` must be a `let` (not `const`) so it can be recomputed on store subscription
+- The top-level store subscription in `createHome` recomputes `urgentByObj` and re-renders hotspots whenever `maintenance_tasks`, `vehicles`, `urgent_items`, `calendar`, or `health` change
+- The primary spot (ATAK) carries no default ring or glow — it is always present and does not need to announce itself
+
+**Check:** After any domain action (mark done, save, update), does the relevant tap circle update without a page reload? If not, trace the store subscription → `renderHotspots()` chain.
 
 ---
 
@@ -862,7 +848,7 @@ Rules that govern the onboarding experience specifically.
 Onboarding is not a form. It is a first conversation — or more precisely, a first arrival. The experience has three phases:
 
 **Phase 1 — The Gallery**
-Eight environments presented visually. No labels initially. The user browses without pressure. They are drawn by atmosphere, not language. No commitment required. They can enter a world, feel it begin, and drift back to the gallery if it starts to break away from them. The app learns even from drift.
+Eight environments presented visually. No labels initially. The user browses without pressure. They are drawn by atmosphere, not language. No commitment required. They can enter a world, feel it begin, and drift back to the gallery if it starts to break away from them.
 
 **Phase 2 — The Arrival**
 The user settles into their chosen world. The environment loads. A moment of stillness before anything speaks. The UI itself is the first act of tending.
@@ -1043,7 +1029,7 @@ One false note ends the relationship. Not one screen. One line. One word that la
 
 There is no recovery from that moment. The Sanctuary cannot save a product that lost the person on the intake screen. The ATAK cannot earn back trust that was broken by a brief that sounded like a dashboard. SHAPE cannot surface for someone who already left.
 
-The world language is not a feature to be added after the domains are complete. It is the product. The domains are the skeleton. The world language is the skin, the voice, the presence, the reason a person feels met rather than processed. Without it the app is functional and forgettable. Functional and forgettable is not what this work has been building toward.
+The world language is not a feature to be added after the domains are complete. It is the product. The domains are the skeleton. The world language is the skin, the voice, the presence, the reason a person feels met rather than processed.
 
 **Every line of copy must pass three tests before it ships:**
 
@@ -1088,9 +1074,10 @@ That is not an aspiration. That is the shipping standard.
 - SHAPE interpreted layer rebuild trigger — what causes a rebuild? Time-based, event-based, or both?
 - Sanctuary trigger threshold — architecture locked (Session 28): three components, accumulation + disengagement + final blow. Specific thresholds elastic by design, calibrate through deployment.
 - ~~**HUMINT collection principles**~~ — **Closed Session 34.** Reflecting Pool Collection Principles document complete. `shape.js` built Session 36.
-- **`datepicker.js` extraction** — shared date picker component exists in `calendar.js`, must be extracted before any new domain needing a date field is built.
+- ~~**`datepicker.js` extraction**~~ — **Closed Session 37.** `datepicker.js` built and wired across all date fields. Every date input in the app draws from this component. No new date field ships without it.
 - **Sanctuary system prompt** — `getSanctuaryHandoff()` interface is live. Writing session required. Read Sanctuary Prompt Brief and SHAPE Definition Document before that session opens.
 - **Onboarding redesign** — full flow redesign session required before next beta user. Includes: birthday field, occupation sector question, back button, question consolidation, generosity rewrite.
+- **Cross-world deployment** — Operator world is solid. All other worlds need: functional parity (cascades, ATAK, domains), tap area calibration, and a language pass per the World Voice Guide. Requires a dedicated thinking session before any code changes. World Voice Guide is the hard dependency for copy.
 - Female perspective — not an open decision, an overdue requirement. Dedicated session before any real user sees the product. Listed here as a reminder of its urgency, not its optionality.
 
 ---
@@ -1142,7 +1129,8 @@ The fix is a design pass, not a logic pass. It should be a dedicated session onc
 | Session 34 | HUMINT Collection Principles thinking session completed. Reflecting Pool Collection Principles document produced and added to project (10 sections). Key principles locked: borrows collection discipline for rigor but sole purpose is care; user is commander, source, and beneficiary simultaneously; SHAPE functions as the pre-read source file; defined floor below which collection stops and redirects; entry model requires no opening prompt; six system prompt constraints defined. Cascade architecture articulated: reflecting pool collects → SHAPE interprets → ATAK brief becomes personal → trust deepens → user speaks more honestly → picture improves over time. User-initiated only in first iteration. Build test protocol locked: Shawn sits in the reflecting pool before it ships to any real user. |
 | Session 35 | Reflecting pool domain built and live — `reflectingpool.js`, `store.reflecting_pool`, AI exchange working. 365-Day Calendar Rule locked: every temporal item across all domains writes to `store.calendar` up to 12 months out, rolling; `info` pressure tier added for 31–365 day range. Health lines are doors — every sub-domain line tappable, opens appropriate cascade or reflecting pool. Physical advice cascade added (Training + Nutrition routes). Well-being session prep cascade added. Reflecting pool prompt constraint added: the pool receives, never promises. SHAPE gap named: reflecting pool collects correctly; shape.js is what closes the loop. CAF incident named as the reference case. |
 | Session 36 (Build) | `shape.js` built and live — nine parts: raw layer (append-only), interpreted layer (AI-generated paragraph), pool reader (per-exchange + on-close extraction), convergence detection (five domains, threshold three), ATAK sharing interface, Sanctuary handoff, bootstrap. Per-exchange factual extraction (`extractFactualCorrections`) fires on every user message before pool responds. `_writeToFieldPath` confirmed working — dot-notation writes to any store domain. `military: {}` and `shape: null` added to store defaults. `onboarding.occupation_sector` added (eight buckets). Medical cascade fully wired for non-standard coverage — CAF suppresses provincial health card output. `health.medical.special_notes` field added. Reflecting pool Rule 8 locked (2.26 above). ATAK brief now carries `shape: getShapeContext()` on every build. |
-| Session 36 Debug | Six bugs fixed. `YourLifeUnlocked_Shawn_Guidance.md` absorbed into this document (Part 0, sections 0.0–0.4) — Shawn's pre-session obligations, division of responsibility, session mode rules, and principles quick-reference. Shawn Guidance file retired.  Recurring calendar built end to end — five frequencies (daily, weekly, biweekly, monthly, annually), weekdays excluded by design. Calendar edit flow built — `updateUserEntry`, pre-populated form, inline notes display, mini date picker for end date range, remove confirmation (sure?), form closes after save. Month/year jump picker built — decade accordion, month grid, Go button. Profile editor built (`profileeditor.js`) — ATAK entry point, draft state, save/cancel, team editing included. Safe area fix for reflecting pool PWA mode. `buildSectionHTML` fixed to respect `custom_html` on items. Medical appointment signal window widened to 365 days. `pc_next_due` always recomputed from `last_seen` after edit. `syncHealthSignals` called on boot. Birthday field path added to SHAPE extraction prompts. `store.user.birthday` added. 2.26 (Reflecting Pool Receive Rule), 2.27 (Occupation Context Rule), 2.28 (SHAPE Write-Back Principle) locked. 2.4b updated — shared `datepicker.js` component required, extraction queued. |
+| Session 36 Debug | Six bugs fixed. `YourLifeUnlocked_Shawn_Guidance.md` absorbed into this document (Part 0, sections 0.0–0.4) — Shawn's pre-session obligations, division of responsibility, session mode rules, and principles quick-reference. Shawn Guidance file retired. Recurring calendar built end to end — five frequencies (daily, weekly, biweekly, monthly, annually), weekdays excluded by design. Calendar edit flow built — `updateUserEntry`, pre-populated form, inline notes display, mini date picker for end date range, remove confirmation (sure?), form closes after save. Month/year jump picker built — decade accordion, month grid, Go button. Profile editor built (`profileeditor.js`) — ATAK entry point, draft state, save/cancel, team editing included. Safe area fix for reflecting pool PWA mode. `buildSectionHTML` fixed to respect `custom_html` on items. Medical appointment signal window widened to 365 days. `pc_next_due` always recomputed from `last_seen` after edit. `syncHealthSignals` called on boot. Birthday field path added to SHAPE extraction prompts. `store.user.birthday` added. 2.26 (Reflecting Pool Receive Rule), 2.27 (Occupation Context Rule), 2.28 (SHAPE Write-Back Principle) locked. 2.4b updated — shared `datepicker.js` component required, extraction queued. |
+| Session 37 | `renderHotspots()` bug fixed — layer cleared before rebuild; tap circles update immediately on mark-done without reload. ATAK white ring removed — primary spot carries no default glow. Maintenance mark-done calls `syncMaintenanceSignals()` not `dismissItem()` — derived items clear correctly. Vehicle edit recalculates `service_due` from oil date + interval; `next_service_km` field added. Mileage-based overdue detection added to `getUrgentItems()`. ATAK duplicate vehicle signal fixed — direct vehicle loop removed; calendar is authoritative (architecture as designed, Session 23). `saveVehicleField` calls `syncVehicleSignals()` after every save — reg/insurance/service dates now write to calendar on edit. ISO date normalization added to `saveVehicleField` and `_syncVehicleSignals` — display strings can no longer corrupt the store or the calendar. Vehicle service cascade shop/dealer routes show "Find nearby" fallback when AI returns null details. Maintenance edit flow built — `_editingTaskId`, edit button, pre-filled intake. `datepicker.js` built — every date field in the app draws from one component; local `buildDateField` removed from `cascade.js`. `datepicker.js` open decision closed. 2.29 (Tap Circle Rule) locked. Calendar Contract Rule added to 0.4 quick-reference. Cross-world deployment added to open decisions. |
 
 ---
 
