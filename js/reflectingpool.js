@@ -197,12 +197,14 @@ export function createReflectingPoolPanel(container, onClose) {
       display:flex;flex-direction:column;height:100%;
       font-family:var(--font-sans);
       color:rgba(240,235,218,0.85);
+      padding-top:var(--safe-top);
+      box-sizing:border-box;
     ">
 
       <!-- Header -->
       <div style="
         display:flex;align-items:center;justify-content:space-between;
-        padding:max(20px, env(safe-area-inset-top)) 20px 16px;
+        padding:20px 20px 16px;
         border-bottom:0.5px solid rgba(240,235,218,0.08);
         flex-shrink:0;
       ">
