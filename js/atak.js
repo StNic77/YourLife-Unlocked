@@ -354,6 +354,33 @@ export function getUrgentItems() {
     });
   });
 
+  // ── Vehicle km-overdue ───────────────────────────────────────────────────
+  // Surfaces when current mileage exceeds next service mileage.
+  // Complements the date-based service_due signal — catches cases where
+  // the user drives more than the monthly average estimate assumed.
+  const vehicles = store.get('vehicles') || [];
+  vehicles.forEach(v => {
+    if (!v.next_service_km || !v.mileage_at_entry) return;
+    const id = `vehicle_km_overdue_${v.id}`;
+    if (storedIds.has(id)) return; // already in stored items (e.g. snoozed)
+    const kmOver = v.mileage_at_entry - v.next_service_km;
+    if (kmOver <= 0) return; // not yet overdue by km
+    derived.push({
+      id,
+      object:    'keys',     // routes to vehicles hotspot
+      domain:    'vehicles',
+      title:     `${v.name || 'Vehicle'} — Oil change overdue`,
+      body:      `${kmOver.toLocaleString()} km past due`,
+      snoozable: true,
+      snoozed_until: null,
+      tier:      'warning',
+      cascade: {
+        type:    'vehicle_service',
+        context: { vehicle_id: v.id, service_type: 'oil_change' },
+      },
+    });
+  });
+
   return [...active, ...derived];
 }
 

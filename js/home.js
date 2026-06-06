@@ -292,9 +292,20 @@ export function createHome(world) {
   syncHealthSignals();
   syncBirthdaySignals();
 
-  const urgentItems  = getUrgentItems();
   const hotspots     = HOTSPOT_MAPS[world.id] || HOTSPOT_MAPS.operator;
-  const urgentByObj  = buildUrgentByObject(urgentItems, hotspots);
+  let   urgentByObj  = buildUrgentByObject(getUrgentItems(), hotspots);
+
+  // Re-evaluate tap circle state whenever relevant store keys change.
+  // urgentByObj must stay current — maintenance completions, vehicle saves,
+  // and health changes all affect which circles pulse and at what tier.
+  const _hotspotWatchKeys = ['maintenance_tasks', 'vehicles', 'urgent_items', 'calendar', 'health'];
+  store.subscribe((_state, key) => {
+    const changed = Array.isArray(key) ? key : [key];
+    if (changed.some(k => _hotspotWatchKeys.includes(k))) {
+      urgentByObj = buildUrgentByObject(getUrgentItems(), hotspots);
+      renderHotspots();
+    }
+  });
 
   let briefOpen = false;
 

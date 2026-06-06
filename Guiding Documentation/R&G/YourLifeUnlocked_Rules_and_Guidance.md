@@ -1,14 +1,34 @@
 # YOUR LIFE: UNLOCKED
 ## Rules, Principles & Design Guidance
-*Living Document — Updated Each Session | Last Revised: June 4, 2026 (Session 33) | Authoritative Consolidated Version | Confidential*
+*Living Document — Updated Each Session | Last Revised: June 6, 2026 (Session 36 Debug) | Authoritative Consolidated Version | Confidential*
 
 ---
 
-> This document is the single source of truth for how decisions get made on this product. Every principle here was earned through conversation, not assumed. When something is added it stays unless explicitly retired. When a session produces a new rule or check, it gets added here before the handoff is written.
+> This document is the single source of truth for how decisions get made on this product. It covers product rules, design principles, and Shawn's personal operating rules as project lead — all in one place. Every principle here was earned through conversation, not assumed. When something is added it stays unless explicitly retired. When a session produces a new rule or check, it gets added here before the handoff is written.
+>
+> **Session 36 merge note:** `YourLifeUnlocked_Shawn_Guidance.md` has been absorbed into this document (Part 0, sections 0.0–0.4). The Shawn Guidance file is now retired. This file is the single authority.
 
 ---
 
 ## PART 0 — SESSION PROTOCOL
+
+### 0.0 Shawn's Pre-Session Obligations
+*(Session 19 — from Shawn's Guidance document, merged Session 36)*
+
+**Do these three things before opening the chat. No exceptions.**
+
+**Read the last handoff.**
+Open the most recent session handoff. Read at minimum: the parked list and the session agenda. If you arrive without doing this, the first 20 minutes will be spent reconstructing context that is already written down. The handoffs exist so you don't have to remember everything. Use them.
+
+**Run the app on device.**
+Open the app on your phone — not on desktop, on your phone. Tap through the primary flow. Note anything that feels off, broken, confusing, or wrong. Even vague observations are better than nothing. Precise observations are what move sessions forward fastest. You do not need to understand why something is broken. You need to notice that it is.
+
+**Write your list before the session starts.**
+Arrive with at least one concrete thing. A button that doesn't work. A flow that confused you. A design decision you've been thinking about. A question that surfaced overnight. If you have nothing concrete, re-read the parked list from the last handoff and pick one thing you want to move.
+
+If the answer to "did you read the handoff" or "did you run the app" is no — do them now before the check-in continues. This is not a formality.
+
+---
 
 ### 0.1 The Session Check-In Protocol
 *(Session 15, updated Session 19)*
@@ -22,7 +42,7 @@ Before responding to any agenda item, design question, or build request, Claude 
 - The last three to four session handoffs
 - This Rules and Guidance document
 
-If Claude has not done this, Shawn stops the session until it is done. This is non-negotiable. The project knowledge is the authority. Working from memory or momentum produces drift. Drift compounds. Thirty-three sessions of coherent work depends on this standard being held at the start of every session.
+If Claude has not done this, Shawn stops the session until it is done. This is non-negotiable. The project knowledge is the authority. Working from memory or momentum produces drift. Drift compounds. Thirty-six sessions of coherent work depends on this standard being held at the start of every session.
 
 **The six check-in questions:**
 
@@ -38,6 +58,68 @@ The check-in is a moment of genuine collaboration, not status reporting. Claude 
 
 **Session intent:**
 After the six questions, Claude states the session intent in one or two sentences. Both parties confirm before building begins.
+
+---
+
+### 0.2 Division of Responsibility
+*(Session 19 — from Shawn's Guidance document, merged Session 36)*
+
+This is a real division, not a courtesy title. Both parties hold each other to it.
+
+**Shawn owns:**
+- The vision — what this product is and what it is not
+- The principles — holding the line on the Authenticity Standard, Restraint Principle, Tending Philosophy. If something drifts, Shawn catches it
+- The user experience — how it feels to use this app. Shawn is the user. His instincts are the test
+- The decisions — what gets built, in what order, and why
+- The pace — when sessions happen, how long they run, when to stop
+
+**Claude owns:**
+- The execution — how the code is structured, what files change, how the build is done
+- The architecture memory — what is in the codebase, what was built in which session, what is parked and why
+- Holding Shawn to the documents — if a principle is drifted from, Claude names it
+
+The collaboration works when both parties hold each other to the documents. Both are entitled to push back.
+
+---
+
+### 0.3 Session Mode Rules
+*(Session 19 — from Shawn's Guidance document, merged Session 36)*
+
+**Separate thinking from building.**
+These are two different modes. They do not belong in the same breath. If a new idea surfaces — a new model, a design direction, a question about how something should work — stop and think it through before any code is written. Say it out loud. Let it get drawn out. Lock the model. Then build. Building before the model is locked produces code that needs to be rewritten.
+
+**The rule: vision first. Build second. Always.**
+
+**Trust instincts faster.**
+If something feels wrong, it is wrong. Name it and move. If you have a design instinct, lead with it — describe it as if it's already decided and see what surfaces. The conversation will correct if you're off. It will accelerate if you're right.
+
+**When stuck, describe the gap — not the code.**
+Describe what you expected the app to do, and what it did instead. Not a paste of the console. What you expected versus what you observed. That is the fastest path to a fix.
+
+**Don't let the session drift.**
+Every session has an agenda. If the session moves toward something not on the agenda, name it: *"This feels like it's moving off the agenda — should we park this or is this worth the detour?"* Detours are sometimes right. They should be chosen, not stumbled into.
+
+---
+
+### 0.4 The Principles Quick-Reference
+*(Shawn's Guidance document, merged Session 36)*
+
+Before approving any build, feature, or design decision, run it through these.
+
+| Principle | The Check |
+|---|---|
+| **Authenticity Standard** | Does this feel like something a real person would say, or an app performing depth it hasn't earned? |
+| **Restraint Principle** | Does this serve the user's life, or the app's metrics? |
+| **Tending Philosophy** | Does this take from the user, or give to them? |
+| **Roll-Eyes Test** | Would the user silently thank the app for this, or roll their eyes? |
+| **Cheesy Hook Check** | Does this copy make you want to leave the room? If yes, rewrite it. |
+| **Feather Rule** | Does this copy do its work without the user feeling it land? |
+| **Betty Test** | Would Betty — middle-aged admin assistant, aging vehicle — understand and feel served by this? |
+| **Cascade Depth Rule** | More than four fields → full cascade. Four or fewer → editable in place. |
+| **ATAK Authority Rule** | Does every ATAK tap route to a domain? The domain has depth. The ATAK has the picture. |
+| **Alert Architecture** | Is this a Warning (now) or a Caution (soon)? Never blur the two. |
+| **Date Input Rule** | Is there a date picker? If it's a text input, it's not done. |
+| **World Voice Rule** | Does this copy pass the trope test, feather test, and Betty test for its world? |
 
 ---
 
@@ -166,13 +248,18 @@ Every interaction defaults to tappable tiles. The user should never be required 
 ---
 
 ### 2.4b The Date Input Rule
-*(Session 22)*
+*(Session 22, updated Session 36)*
 
-> **Every date input field has a calendar picker. Text entry remains available alongside it. Neither replaces the other.**
+> **No date field ships as a text input. All date selection uses the shared picker component.**
 
-No date field ships as a text-only input. The calendar picker is always present. The user who wants to type a date can. The user who wants to tap through a calendar can. Both paths write to the same stored value.
+The original rule required a calendar picker alongside text entry. Session 36 sharpened this: text-only date inputs are prohibited entirely. The shared picker component (`datepicker.js`) is the only date input across the entire app.
 
-**Applies to:** all intake flows, all tap-to-edit fields, all log forms, all new date fields going forward.
+**The shared component (`datepicker.js`):**
+Built in Session 36 as part of the calendar domain. Features: month grid, decade accordion (tap decade to expand year grid), Go button. Getting to 1985 is four taps from anywhere. Must be extracted into a standalone importable module before any new domain that needs a date field is built. Every domain imports from it — no domain rolls its own date picker.
+
+**Applies to:** all intake flows, all tap-to-edit fields, all cascade forms, all log forms, health appointment dates, vehicle expiry dates, profile editor birthday, all new date fields going forward.
+
+**Current status:** Component exists in `calendar.js`. Extraction to `datepicker.js` is queued — do not build any new date field before extraction is complete.
 
 ---
 
@@ -710,6 +797,59 @@ The transmission that happens — the API call, the processing — is in service
 
 ---
 
+### 2.26 — The Reflecting Pool Receive Rule
+*(Session 36)*
+
+> **When a user states a fact about themselves in the reflecting pool, the pool receives it and moves on. It never redirects to settings. It never explains the architecture. The app is listening. That is not the user's concern.**
+
+The pool's job is to receive and ask the next question. SHAPE handles the filing. The pool never breaks this frame by explaining what it can or cannot do with information. The boundary between collection and storage is real — and invisible to the user by design.
+
+**The failure mode (what this rule prevents):** A user says "I am a CAF member and I don't have a BC health card." The pool responds: "This space is for you to think out loud, not a place that updates your app settings or medical info. That kind of change needs to happen through the app's profile or settings directly." This response accurately perceived an architectural boundary and then surfaced it. That is wrong. The boundary is real. The user doesn't need to know it exists.
+
+**Check:** Does the pool response explain the system to the user? If yes, rewrite it.
+
+---
+
+### 2.27 — The Occupation Context Rule
+*(Session 36)*
+
+> **Occupation sector + country + province/state is the full context for any occupation-aware output. No single-country assumptions are ever baked into prompts.**
+
+`occupation_sector` is a category, not a full profile. What it means varies significantly by country — Canadian Armed Forces, US Military, and UK Armed Forces have completely different healthcare systems, benefit structures, pension schemes, and terminology. The app never assumes which country's systems apply based on occupation alone.
+
+**The governing rule:** Before any occupation-aware cascade output, prompt, or signal is generated, the model reads occupation_sector + country + province together and derives the correct system from that combination.
+
+**Examples:**
+- CAF member in BC → DND medical, SISIP, base facilities, posting cycles
+- US Military member in Texas → TRICARE, VA awareness, PCS cycles
+- NHS healthcare worker in England → NHS pension, occupational health norms
+
+**Applies to:** medical cascade, SHAPE extraction field paths, any future financial or benefit signals, the profile editor downstream, and any AI prompt that produces occupation-aware language.
+
+**Check:** Does this prompt assume CAF, TRICARE, NHS, or any other specific system without reading country first? If yes, it is wrong.
+
+---
+
+### 2.28 — The SHAPE Write-Back Principle
+*(Sessions 35, 36)*
+
+> **The user says it once. SHAPE does the filing. The product gets smarter without the user having to do anything twice.**
+
+SHAPE extracts factual corrections from pool sessions and writes them to the appropriate store locations. The user never has to open a domain, navigate to a field, or explicitly update their information. They say something true about themselves. SHAPE hears it. The downstream output reflects it on the next cascade open.
+
+**The CAF test case (the reference implementation):**
+1. User says in pool: "I am a CAF member and I don't have a BC health card"
+2. Per-exchange extraction fires immediately
+3. `military.caf_member = true`, `health.health_coverage = "CAF"`, `health.has_bc_carecard = false`, `health.primary_medical_facility` written
+4. Next time medical cascade opens: no health card mentioned, base facilities referenced
+5. User never filed anything. They just talked.
+
+**The field path reference table** — both extraction prompts must contain explicit field paths for common facts (birthday, CAF status, occupation, etc.) so the AI knows where to write without guessing. Vague paths silently drop. Explicit paths land correctly.
+
+**Check:** If a user says something factual about themselves in the pool, does the downstream output reflect it on the next cascade open? If not, trace the extraction → write → sync chain.
+
+---
+
 ## PART 3 — ONBOARDING RULES
 
 Rules that govern the onboarding experience specifically.
@@ -947,7 +1087,10 @@ That is not an aspiration. That is the shipping standard.
 - SHAPE write model — what gets written to the raw layer and when? Every ATAK synthesis, key moments only, or both?
 - SHAPE interpreted layer rebuild trigger — what causes a rebuild? Time-based, event-based, or both?
 - Sanctuary trigger threshold — architecture locked (Session 28): three components, accumulation + disengagement + final blow. Specific thresholds elastic by design, calibrate through deployment.
-- **HUMINT collection principles** — the governing discipline for how SHAPE reads the Reflecting Pool conversation and extracts intelligence. How extraction works across all eight worlds. Intelligence requirements framework. Requires its own dedicated thinking session — the remaining thinking dependency before `shape.js` is built. Do not build before this session has happened. (Session 32, reconfirmed Session 33)
+- ~~**HUMINT collection principles**~~ — **Closed Session 34.** Reflecting Pool Collection Principles document complete. `shape.js` built Session 36.
+- **`datepicker.js` extraction** — shared date picker component exists in `calendar.js`, must be extracted before any new domain needing a date field is built.
+- **Sanctuary system prompt** — `getSanctuaryHandoff()` interface is live. Writing session required. Read Sanctuary Prompt Brief and SHAPE Definition Document before that session opens.
+- **Onboarding redesign** — full flow redesign session required before next beta user. Includes: birthday field, occupation sector question, back button, question consolidation, generosity rewrite.
 - Female perspective — not an open decision, an overdue requirement. Dedicated session before any real user sees the product. Listed here as a reminder of its urgency, not its optionality.
 
 ---
@@ -996,6 +1139,10 @@ The fix is a design pass, not a logic pass. It should be a dedicated session onc
 | Session 31 | World Voice Guide written and locked as pointing true. Governing principle locked: plain language for everyone, moderated by the world. Three copy tests locked: trope test, feather test, Betty test. All eight world entries written. Standing rule: every piece of copy measured against the Voice Guide before it ships — world by world, no exceptions. |
 | Session 32 | Architecture correction locked — SHAPE is the human intelligence operator; ATAK is the all-source fusion cell. SHAPE feeds the ATAK; ATAK fuses everything. SHAPE makes it human. Design standard: SHAPE has to be a superhero. Sanctuary Prompt Brief moved from Draft to Final — Section 12 written (not-ready response model, ATAK tile, two-response model). ATAK tile locked: "Ready to slow down for a minute?" All eight world opening sequences written and locked as direction. Reflecting pool / SHAPE collection domain flagged — "Has something changed?" evolving into primary HUMINT feed for SHAPE; requires dedicated thinking session before build. HUMINT collection principles flagged as governing discipline for that domain — dedicated session required. SHAPE and ATAK Definition Documents updated. |
 | Session 33 | Reflecting Pool / "Has something changed?" domain defined. Governing principle locked as 2.25: the user never files, the user only speaks, SHAPE does the filing. Domain architecture locked: one door, one conversation, no paths, no categories. Reflecting Pool confirmed as conversation layer inside "Has something changed?" — not a separate domain. Memory model locked: persistent, accumulating, compressing. Privacy promise language defined: plain, honest, not overstated. Open decision updated: Reflecting Pool thinking session complete, HUMINT Collection Principles remains the final thinking dependency before shape.js build. |
+| Session 34 | HUMINT Collection Principles thinking session completed. Reflecting Pool Collection Principles document produced and added to project (10 sections). Key principles locked: borrows collection discipline for rigor but sole purpose is care; user is commander, source, and beneficiary simultaneously; SHAPE functions as the pre-read source file; defined floor below which collection stops and redirects; entry model requires no opening prompt; six system prompt constraints defined. Cascade architecture articulated: reflecting pool collects → SHAPE interprets → ATAK brief becomes personal → trust deepens → user speaks more honestly → picture improves over time. User-initiated only in first iteration. Build test protocol locked: Shawn sits in the reflecting pool before it ships to any real user. |
+| Session 35 | Reflecting pool domain built and live — `reflectingpool.js`, `store.reflecting_pool`, AI exchange working. 365-Day Calendar Rule locked: every temporal item across all domains writes to `store.calendar` up to 12 months out, rolling; `info` pressure tier added for 31–365 day range. Health lines are doors — every sub-domain line tappable, opens appropriate cascade or reflecting pool. Physical advice cascade added (Training + Nutrition routes). Well-being session prep cascade added. Reflecting pool prompt constraint added: the pool receives, never promises. SHAPE gap named: reflecting pool collects correctly; shape.js is what closes the loop. CAF incident named as the reference case. |
+| Session 36 (Build) | `shape.js` built and live — nine parts: raw layer (append-only), interpreted layer (AI-generated paragraph), pool reader (per-exchange + on-close extraction), convergence detection (five domains, threshold three), ATAK sharing interface, Sanctuary handoff, bootstrap. Per-exchange factual extraction (`extractFactualCorrections`) fires on every user message before pool responds. `_writeToFieldPath` confirmed working — dot-notation writes to any store domain. `military: {}` and `shape: null` added to store defaults. `onboarding.occupation_sector` added (eight buckets). Medical cascade fully wired for non-standard coverage — CAF suppresses provincial health card output. `health.medical.special_notes` field added. Reflecting pool Rule 8 locked (2.26 above). ATAK brief now carries `shape: getShapeContext()` on every build. |
+| Session 36 Debug | Six bugs fixed. `YourLifeUnlocked_Shawn_Guidance.md` absorbed into this document (Part 0, sections 0.0–0.4) — Shawn's pre-session obligations, division of responsibility, session mode rules, and principles quick-reference. Shawn Guidance file retired.  Recurring calendar built end to end — five frequencies (daily, weekly, biweekly, monthly, annually), weekdays excluded by design. Calendar edit flow built — `updateUserEntry`, pre-populated form, inline notes display, mini date picker for end date range, remove confirmation (sure?), form closes after save. Month/year jump picker built — decade accordion, month grid, Go button. Profile editor built (`profileeditor.js`) — ATAK entry point, draft state, save/cancel, team editing included. Safe area fix for reflecting pool PWA mode. `buildSectionHTML` fixed to respect `custom_html` on items. Medical appointment signal window widened to 365 days. `pc_next_due` always recomputed from `last_seen` after edit. `syncHealthSignals` called on boot. Birthday field path added to SHAPE extraction prompts. `store.user.birthday` added. 2.26 (Reflecting Pool Receive Rule), 2.27 (Occupation Context Rule), 2.28 (SHAPE Write-Back Principle) locked. 2.4b updated — shared `datepicker.js` component required, extraction queued. |
 
 ---
 

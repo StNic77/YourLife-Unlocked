@@ -1826,27 +1826,51 @@ const vehicleIntakeRenderer = {
     if (state._editingVehicleId) {
       const idx = vehicles.findIndex(v => v.id === state._editingVehicleId);
       if (idx >= 0) {
+        const existing = vehicles[idx];
+
+        // Resolve oil change fields — prefer what the user just entered
+        const lastOilDate    = state.last_oil_date     || existing.last_oil_date     || null;
+        const lastOilMileage = parseInt(state.last_oil_mileage, 10) || existing.last_oil_mileage || null;
+        const intervalKm     = parseInt(state.interval_km, 10)      || existing.preferred_interval_km || 8000;
+        const currentMileage = parseInt(state.mileage, 10)          || existing.mileage_at_entry;
+
+        // Recalculate service_due date from last oil date + interval estimate.
+        // Assumes ~1,500 km/month if no better data. AI schedule takes precedence if present.
+        let serviceDue = state.ai_schedule?.next_oil_change_date || null;
+        if (!serviceDue && lastOilDate && intervalKm) {
+          const lastDate    = new Date(lastOilDate);
+          const kmRemaining = lastOilMileage ? (lastOilMileage + intervalKm) - (currentMileage || lastOilMileage) : intervalKm;
+          const monthsOut   = Math.max(0, kmRemaining / 1500);
+          const dueDate     = new Date(lastDate);
+          dueDate.setDate(dueDate.getDate() + Math.round(monthsOut * 30.4));
+          serviceDue = dueDate.toISOString().split('T')[0];
+        }
+        if (!serviceDue) serviceDue = existing.service_due || null;
+
+        // Next service mileage — deterministic from last + interval
+        const nextServiceKm = lastOilMileage ? lastOilMileage + intervalKm : null;
+
         vehicles[idx] = {
-          ...vehicles[idx],
+          ...existing,
           name: [state.year, state.make, state.model, state.variant].filter(Boolean).join(' '),
           year:  state.year,
           make:  state.make,
           model: state.model,
           variant: state.variant || null,
-          mileage_at_entry: parseInt(state.mileage, 10) || vehicles[idx].mileage_at_entry,
+          mileage_at_entry: currentMileage || existing.mileage_at_entry,
           mileage_date: new Date().toISOString().split('T')[0],
-          last_oil_date: state.last_oil_date || vehicles[idx].last_oil_date || null,
-          last_oil_mileage: parseInt(state.last_oil_mileage, 10) || vehicles[idx].last_oil_mileage || null,
-          plate_province: state.plate_province || vehicles[idx].plate_province || null,
-          preferred_shop: state.preferred_shop || vehicles[idx].preferred_shop || null,
-          preferred_interval_km: parseInt(state.interval_km, 10) || vehicles[idx].preferred_interval_km || 8000,
-          vin: state.vin || vehicles[idx].vin || null,
-          transmission: state.transmission || vehicles[idx].transmission || null,
-          service_history: state.history?.length ? state.history : vehicles[idx].service_history || [],
-          maintenance_schedule: state.ai_schedule ? { ...state.ai_schedule, vehicle_facts: undefined } : vehicles[idx].maintenance_schedule,
-          // vehicle_facts locked — only update if none exist yet
-          vehicle_facts: vehicles[idx].vehicle_facts || state.ai_schedule?.vehicle_facts || null,
-          service_due: state.ai_schedule?.next_oil_change_date || vehicles[idx].service_due || null,
+          last_oil_date:    lastOilDate,
+          last_oil_mileage: lastOilMileage,
+          next_service_km:  nextServiceKm,
+          plate_province: state.plate_province || existing.plate_province || null,
+          preferred_shop: state.preferred_shop || existing.preferred_shop || null,
+          preferred_interval_km: intervalKm,
+          vin: state.vin || existing.vin || null,
+          transmission: state.transmission || existing.transmission || null,
+          service_history: state.history?.length ? state.history : existing.service_history || [],
+          maintenance_schedule: state.ai_schedule ? { ...state.ai_schedule, vehicle_facts: undefined } : existing.maintenance_schedule,
+          vehicle_facts: existing.vehicle_facts || state.ai_schedule?.vehicle_facts || null,
+          service_due: serviceDue,
         };
         store.set('vehicles', vehicles);
         logCascadeComplete('vehicle_intake', state._editingVehicleId, 'edited');
@@ -2380,12 +2404,12 @@ function buildReviewStep(state, context) {
       font-size:12px;letter-spacing:0.06em;
       color:rgba(240,235,218,0.4);
       margin-bottom:24px;line-height:1.6;
-    ">Here's what I've got. Add it?</div>
+    ">${state._editingVehicleId ? "Here's what I have. Save changes?" : "Here's what I've got. Add it?"}</div>
 
     ${rows.map(([label, value]) => buildDetailRow(label, value)).join('')}
 
     <div style="margin-top:28px;display:flex;flex-wrap:wrap;align-items:center;">
-      ${buildDoneButton('Add vehicle')}
+      ${buildDoneButton(state._editingVehicleId ? 'Save changes' : 'Add vehicle')}
       <button id="intake-back-to-edit" style="
         margin-left:10px;
         font-family:var(--font-sans);font-weight:200;
@@ -3299,10 +3323,33 @@ const maintenanceTaskRenderer = {
       task.notes          ? buildDetailRow('Notes',    task.notes)          : '',
     ].filter(Boolean).join('');
 
+    const todayIso = new Date().toISOString().split('T')[0];
+
     return `
       ${sections}
-      <div style="margin-top:24px;display:flex;flex-wrap:wrap;">
-        ${buildDoneButton('Mark done')}
+      <div style="margin-top:28px;">
+        <div style="
+          font-family:var(--font-sans);font-weight:200;font-size:11px;
+          letter-spacing:0.08em;color:rgba(240,235,218,0.35);margin-bottom:10px;
+        ">When was this done?</div>
+        <input
+          id="mt-done-date"
+          type="text"
+          value="${todayIso}"
+          maxlength="10"
+          placeholder="YYYY-MM-DD"
+          style="
+            background:rgba(240,235,218,0.05);border:0.5px solid rgba(240,235,218,0.18);
+            border-radius:2px;padding:10px 14px;
+            font-family:var(--font-sans);font-weight:300;font-size:13px;
+            letter-spacing:0.04em;color:rgba(240,235,218,0.8);
+            width:100%;box-sizing:border-box;margin-bottom:14px;
+            -webkit-appearance:none;outline:none;
+          "
+        />
+        <div style="display:flex;flex-wrap:wrap;gap:10px;">
+          ${buildDoneButton('Confirm')}
+        </div>
       </div>
     `;
   },
@@ -3312,13 +3359,18 @@ const maintenanceTaskRenderer = {
     const idx   = tasks.findIndex(t => t.id === context.task_id);
     if (idx < 0) return;
 
-    const task     = tasks[idx];
-    const today    = new Date().toISOString().split('T')[0];
-    task.last_done = today;
+    // Read the date the user entered — fall back to today if blank or malformed
+    const inputEl  = document.getElementById('mt-done-date');
+    const rawDate  = inputEl?.value?.trim();
+    const isValid  = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate);
+    const doneDate = isValid ? rawDate : new Date().toISOString().split('T')[0];
 
-    // Recalculate next due from interval
+    const task     = tasks[idx];
+    task.last_done = doneDate;
+
+    // Recalculate next due from the completion date + interval
     if (task.interval_days) {
-      const next = new Date();
+      const next = new Date(doneDate);
       next.setDate(next.getDate() + task.interval_days);
       task.next_due = next.toISOString().split('T')[0];
     }
