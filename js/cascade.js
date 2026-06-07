@@ -9,6 +9,7 @@ import {
   getApplicableScreenings,
   computeProviderNextDue,
   computeNextDue,
+  syncHealthSignals,
 } from './health.js';
 import { syncBirthdaySignals, retireBirthdaySignal } from './atak.js';
 import { syncVehicleSignals } from './vehicles.js';
@@ -487,6 +488,28 @@ export function createCascade({ item, onBack, onComplete }) {
           const tasks = store.get('maintenance_tasks') || [];
           store.set('maintenance_tasks', tasks.filter(t => t.id !== delBtn.dataset.taskId));
           close(); onComplete?.();
+        });
+      }
+      return;
+    }
+
+    // Reschedule appointment listeners
+    if (cascade.type === 'reschedule_appointment') {
+      attachDateListeners(el);
+      const confirmBtn = el.querySelector('#reschedule-confirm');
+      if (confirmBtn) {
+        confirmBtn.addEventListener('mouseenter', () => {
+          confirmBtn.style.background   = 'rgba(240,235,218,0.08)';
+          confirmBtn.style.borderColor  = 'rgba(240,235,218,0.5)';
+        });
+        confirmBtn.addEventListener('mouseleave', () => {
+          confirmBtn.style.background   = 'transparent';
+          confirmBtn.style.borderColor  = 'rgba(240,235,218,0.3)';
+        });
+        confirmBtn.addEventListener('click', () => {
+          renderer.complete(cascade.context, 'reschedule', null);
+          close();
+          onComplete?.();
         });
       }
       return;
@@ -1522,6 +1545,86 @@ const medicalAppointmentRenderer = {
       markAppointmentKept(signal_type, signal_ref, nextDue);
     }
     logCascadeComplete('medical_appointment', context.appointment_type, route);
+  },
+};
+
+// ---------------------------------------------------------------------------
+// HC-5b — RESCHEDULE APPOINTMENT
+// Lightweight date-only edit for any health appointment.
+// Opens from the "edit" button on appointment lines in the health brief.
+// Writes directly to the correct store location and syncs signals.
+// No AI call — just a date picker and confirm.
+// ---------------------------------------------------------------------------
+
+const rescheduleAppointmentRenderer = {
+  async resolve(context, preference) {
+    return { route: 'reschedule', routes: [] };
+  },
+  getRoutes() { return [{ id: 'reschedule', label: 'Reschedule' }]; },
+  getDefaultRoute() { return 'reschedule'; },
+
+  async buildRoute(route, context) {
+    const { signal_type, signal_ref, next_due, provider_name, screening_label, appointment_type } = context;
+
+    const typeLabels = {
+      annual_physical: 'Annual physical',
+      dentist:         'Dental appointment',
+      eye_care:        'Eye exam',
+      skin:            'Skin check',
+      specialist:      'Specialist appointment',
+      screening:       screening_label || 'Screening',
+    };
+    const label = provider_name || typeLabels[appointment_type] || 'Appointment';
+
+    return `
+      <div style="padding:8px 0 16px;">
+        <div style="
+          font-family:var(--font-sans);font-weight:200;
+          font-size:11px;letter-spacing:0.2em;text-transform:uppercase;
+          color:rgba(240,235,218,0.35);margin-bottom:20px;
+        ">${label}</div>
+        ${buildDateField('reschedule_date', 'New date', next_due || '', { mode: 'any' })}
+        <div style="margin-top:24px;">
+          <button id="reschedule-confirm" style="
+            padding:12px 28px;
+            border:0.5px solid rgba(240,235,218,0.3);border-radius:2px;
+            font-family:var(--font-sans);font-weight:200;
+            font-size:10px;letter-spacing:0.22em;text-transform:uppercase;
+            color:rgba(240,235,218,0.85);
+            transition:background 0.2s ease,border-color 0.2s ease;
+          ">Confirm</button>
+        </div>
+      </div>
+    `;
+  },
+
+  complete(context, route, update) {
+    // Reads new date from the cascade container and writes to correct store location
+    const container = document;
+    const newDate   = readDateField(container, 'reschedule_date');
+    if (!newDate) return;
+
+    const { signal_type, signal_ref } = context;
+    const health  = store.get('health') || {};
+    const medical = { ...(health.medical || {}) };
+
+    if (signal_type === 'annual_physical') {
+      medical.primary_care = { ...(medical.primary_care || {}), next_due: newDate };
+
+    } else if (signal_type === 'provider') {
+      medical.providers = (medical.providers || []).map(p =>
+        p.id === signal_ref ? { ...p, next_due: newDate } : p
+      );
+
+    } else if (signal_type === 'screening') {
+      medical.screenings = (medical.screenings || []).map(s =>
+        s.id === signal_ref ? { ...s, next_due: newDate } : s
+      );
+    }
+
+    store.set('health', { ...health, medical });
+    syncHealthSignals();
+    logCascadeComplete('reschedule_appointment', signal_type, route);
   },
 };
 
@@ -3807,7 +3910,7 @@ const healthIntakeRenderer = {
     const providers = s.selected_providers.map(tileId => {
       const tile         = PROVIDER_TILES.find(t => t.id === tileId) || {};
       const details      = s.provider_details[tileId] || {};
-      const id           = `prov_${tileId}_${Date.now()}`;
+      const id           = details._existing_id || `prov_${tileId}_${Date.now()}`;
       const interval_days = details.interval_days || null;
       const next_due = details.next_due ||
         (details.last_seen
@@ -4868,6 +4971,7 @@ function _prePopulateHealthState(s) {
       name:          p.name      || '',
       last_seen:     p.last_seen || '',
       interval_days: p.interval_days || null,
+      _existing_id:  p.id        || null,  // preserve so signal ID stays stable on re-save
     };
   });
 
@@ -5058,7 +5162,8 @@ function removePerson(personId) {
 const RENDERERS = {
   vehicle_registration: vehicleRegistrationRenderer,
   vehicle_service:      vehicleServiceRenderer,
-  medical_appointment:  medicalAppointmentRenderer,
+  medical_appointment:      medicalAppointmentRenderer,
+  reschedule_appointment:   rescheduleAppointmentRenderer,
   physical_advice:      physicalAdviceRenderer,
   wellbeing_session:    wellbeingSessionRenderer,
   vehicle_intake:       vehicleIntakeRenderer,

@@ -328,31 +328,10 @@ export function getUrgentItems() {
   }
 
   // ── Maintenance tasks ─────────────────────────────────────────────────────
-  const tasks = store.get('maintenance_tasks') || [];
-  const today = new Date();
-  tasks.forEach(t => {
-    const id = `maintenance_task_${t.id}`;
-    if (storedIds.has(id) || !t.next_due) return;
-    const days    = Math.ceil((new Date(t.next_due) - today) / (1000 * 60 * 60 * 24));
-    if (days > 14) return;
-    const overdue = days < 0;
-    derived.push({
-      id,
-      object:    'maintenance',
-      domain:    'maintenance',
-      title:     t.label,
-      body:      overdue
-        ? `Overdue by ${Math.abs(days)} days`
-        : days === 0 ? 'Due today' : `Due in ${days} days`,
-      snoozable: !overdue,
-      snoozed_until: null,
-      tier:      overdue ? 'warning' : 'caution',
-      cascade: {
-        type:    'maintenance_task',
-        context: { task_id: t.id },
-      },
-    });
-  });
+  // Maintenance urgency surfaces exclusively via store.calendar domain_signal
+  // entries written by syncMaintenanceSignals() in maintenance.js.
+  // Reading store.maintenance_tasks directly here caused duplicates.
+  // The calendar is the authoritative temporal layer — same pattern as vehicles.
 
   // ── Vehicle km-overdue ───────────────────────────────────────────────────
   // Surfaces when current mileage exceeds next service mileage.
@@ -417,6 +396,12 @@ export function buildPrimaryBrief() {
   const sections = [];
   const nowMs    = new Date().setHours(0,0,0,0);
   const calAll   = store.get('calendar') || [];
+
+  // Tracks calendar signal IDs already surfaced in any section.
+  // Prevents the same domain_signal from appearing in both This Week
+  // (via buildTemporalSection/analyseTemporalWindow) and This Month
+  // or On the Horizon (via the domain_signal loops below).
+  const seenSignalIds = new Set();
 
   // ── CONSEQUENCE SCORING ───────────────────────────────────────────────────
   // Determines whether an item routes to "This Month" (score 1+) or
@@ -523,6 +508,14 @@ export function buildPrimaryBrief() {
   const temporalSection = buildTemporalSection();
   if (temporalSection) sections.push(temporalSection);
 
+  // Mark all domain_signals within the 7-day window (including overdue) as seen.
+  // Prevents the same signal appearing again in This Month or On the Horizon.
+  calAll.forEach(e => {
+    if (e.type !== 'domain_signal') return;
+    const days = Math.ceil((new Date(e.date + 'T00:00:00') - nowMs) / (1000 * 60 * 60 * 24));
+    if (days <= 7) seenSignalIds.add(e.id);
+  });
+
   // ── 4. THIS MONTH ─────────────────────────────────────────────────────────
   // 8–30 days. High-consequence items that shape the month.
   // Consequence score 1+ lands here. Score 0 goes to On the Horizon.
@@ -567,10 +560,12 @@ export function buildPrimaryBrief() {
   // Domain signals with consequence radius also surface in This Month
   calAll.forEach(e => {
     if (e.type !== 'domain_signal') return;
+    if (seenSignalIds.has(e.id)) return;
     const days = Math.ceil((new Date(e.date + 'T00:00:00') - nowMs) / (1000 * 60 * 60 * 24));
     if (days < 8 || days > 30) return;
     const score = _consequenceScore(e);
     if (score < 1) return;
+    seenSignalIds.add(e.id);
     monthItems.push({
       label:         e.title,
       value:         `${days} days`,
@@ -604,9 +599,11 @@ export function buildPrimaryBrief() {
   // Score 0 domain signals at 15–60 days
   calAll.forEach(e => {
     if (e.type !== 'domain_signal') return;
+    if (seenSignalIds.has(e.id)) return;
     const days = Math.ceil((new Date(e.date + 'T00:00:00') - nowMs) / (1000 * 60 * 60 * 24));
     if (days < 15 || days > 60) return;
     if (_consequenceScore(e) > 0) return;
+    seenSignalIds.add(e.id);
     horizonItems.push({ label: e.title, value: `${days} days`, urgent: false, calendar_date: e.date });
   });
 
@@ -614,13 +611,9 @@ export function buildPrimaryBrief() {
   // Reading directly from store.vehicles here caused duplicates when signals were also
   // present in calAll. The calendar is the authoritative temporal layer.
 
-  // Maintenance tasks — 15–60 days (the furnace filter)
-  const mainTasks = store.get('maintenance_tasks') || [];
-  mainTasks.forEach(t => {
-    if (!t.next_due) return;
-    const days = Math.ceil((new Date(t.next_due) - nowMs) / (1000 * 60 * 60 * 24));
-    if (days > 14 && days <= 60) horizonItems.push({ label: t.label, value: `${days} days`, urgent: false });
-  });
+  // Maintenance tasks — surface via calendar domain signals only (written by syncMaintenanceSignals).
+  // Reading store.maintenance_tasks directly here caused duplicates when signals were also
+  // present in calAll. The calendar is the authoritative temporal layer — same pattern as vehicles.
 
   // Team birthdays — 15–60 days
   if (Array.isArray(team?.children)) {
@@ -915,11 +908,17 @@ export function buildTemporalSection() {
   const items = [];
 
   // ── Overdue items first ───────────────────────────────────────────────────
+  // Signal titles from domain modules include suffixes like "— overdue" or "— today"
+  // for display in the calendar. Strip those before composing ATAK prose.
+  function _cleanTitle(title) {
+    return (title || '').replace(/\s*—\s*(overdue|today|due today)$/i, '').trim();
+  }
+
   if (t.overdue.length > 0) {
-    const labels = t.overdue.slice(0, 2).map(e => e.title).join(' and ');
+    const labels = t.overdue.slice(0, 2).map(e => _cleanTitle(e.title)).join(' and ');
     items.push({
       label:         t.overdue.length === 1
-        ? `${t.overdue[0].title} is overdue`
+        ? `${_cleanTitle(t.overdue[0].title)} is overdue`
         : `${t.overdue.length} things are overdue`,
       value:         t.overdue.length === 1
         ? `${Math.abs(t.overdue[0].days)} day${Math.abs(t.overdue[0].days) === 1 ? '' : 's'} past due`

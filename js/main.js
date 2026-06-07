@@ -7,6 +7,7 @@ import { createHome } from './home.js';
 import { createLocationRequest } from './location.js';
 import { initShape } from './shape.js';
 import { syncHealthSignals } from './health.js';
+import { syncMaintenanceSignals } from './maintenance.js';
 import { injectDatePickerStyles } from './datepicker.js';
 
 const app = document.getElementById('app');
@@ -423,6 +424,9 @@ async function boot() {
   // Health signals — sync on every boot so calendar reflects current health data
   // without requiring the user to re-save health information.
   syncHealthSignals();
+
+  // Maintenance signals — sync on every boot so calendar reflects current tasks.
+  syncMaintenanceSignals();
 
   const devParam = new URLSearchParams(window.location.search).get('dev');
 

@@ -134,21 +134,25 @@ export function getHealthBrief() {
     const uid       = `hsd-${sd.sub_domain}`;
 
     const linesHTML = sd.lines.map(line => {
-      const hasTap = !!line.action;
+      const hasTap    = !!line.action;
+      const hasEdit   = hasTap && line.action_context && (
+        line.action_context.signal_type === 'annual_physical' ||
+        line.action_context.signal_type === 'provider' ||
+        line.action_context.signal_type === 'screening'
+      );
       const contextAttr = hasTap
         ? `data-health-action="${line.action}" data-health-context='${JSON.stringify(line.action_context || {})}'`
         : '';
+      const editAttr = hasEdit
+        ? `data-health-edit='${JSON.stringify(line.action_context || {})}'`
+        : '';
       return `
       <div
-        ${contextAttr}
-        class="${hasTap ? 'health-action-line' : ''}"
         style="
           padding:10px 0;
           border-bottom:0.5px solid rgba(240,235,218,0.05);
           display:flex;justify-content:space-between;align-items:flex-start;gap:12px;
-          ${hasTap ? 'cursor:pointer;' : ''}
         "
-        ${hasTap ? `onmouseenter="this.style.background='rgba(240,235,218,0.02)'" onmouseleave="this.style.background=''"` : ''}
       >
         <div style="
           font-family:var(--font-sans);font-weight:200;
@@ -156,13 +160,34 @@ export function getHealthBrief() {
           color:rgba(240,235,218,0.4);
           flex:0 0 auto;max-width:45%;
         ">${line.label}</div>
-        <div style="
-          font-family:var(--font-sans);font-weight:300;
-          font-size:12px;letter-spacing:0.02em;
-          color:${line.urgent ? 'rgba(210,160,60,0.9)' : 'rgba(240,235,218,0.65)'};
-          text-align:right;
-          ${hasTap ? 'text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(240,235,218,0.15);' : ''}
-        ">${line.value || ''}</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+          ${hasEdit ? `<button
+            class="health-edit-btn"
+            ${editAttr}
+            style="
+              font-family:var(--font-sans);font-weight:200;
+              font-size:10px;letter-spacing:0.18em;text-transform:uppercase;
+              color:rgba(240,235,218,0.25);
+              padding:2px 0;
+              border:none;background:none;cursor:pointer;
+              transition:color 0.2s ease;
+            "
+            onmouseenter="this.style.color='rgba(240,235,218,0.6)'"
+            onmouseleave="this.style.color='rgba(240,235,218,0.25)'"
+          >edit</button>` : ''}
+          <div
+            ${contextAttr}
+            class="${hasTap ? 'health-action-line' : ''}"
+            style="
+              font-family:var(--font-sans);font-weight:300;
+              font-size:12px;letter-spacing:0.02em;
+              color:${line.urgent ? 'rgba(210,160,60,0.9)' : 'rgba(240,235,218,0.65)'};
+              text-align:right;
+              ${hasTap ? 'cursor:pointer;text-decoration:underline;text-underline-offset:3px;text-decoration-color:rgba(240,235,218,0.15);' : ''}
+            "
+            ${hasTap ? `onmouseenter="this.style.background='rgba(240,235,218,0.02)'" onmouseleave="this.style.background=''"` : ''}
+          >${line.value || ''}</div>
+        </div>
       </div>
     `}).join('');
 
@@ -505,6 +530,24 @@ function _evaluateDateSignal({ id, title, dateStr, domain_ref, windowDays, signa
 export function syncHealthSignals() {
   const health  = store.get('health') || {};
   const medical = health.medical || {};
+
+  // ── Retire orphaned provider signals ───────────────────────────────────
+  // Providers once had IDs generated with Date.now(), meaning re-saves
+  // produced new IDs and left old signals stranded. Clean those up by
+  // retiring any provider signal whose domain_ref isn't in the current
+  // providers array.
+  const currentProviderIds = new Set((medical.providers || []).map(p => p.id).filter(Boolean));
+  let calendar = store.get('calendar') || [];
+  const orphans = calendar.filter(e =>
+    e.domain === 'health' &&
+    e.type === 'domain_signal' &&
+    e.id.startsWith('sig_health_provider_') &&
+    !currentProviderIds.has(e.domain_ref)
+  );
+  if (orphans.length) {
+    calendar = calendar.filter(e => !orphans.includes(e));
+    store.set('calendar', calendar);
+  }
 
   // ── Primary care — annual physical ─────────────────────────────────────
   const pc = medical.primary_care || {};

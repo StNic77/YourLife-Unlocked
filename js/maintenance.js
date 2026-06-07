@@ -11,11 +11,34 @@ import { store } from './store.js';
 //   maintenance.js ──reads/writes──▶ store.maintenance_tasks
 //   maintenance.js ──writes signals──▶ store.calendar
 //   home.js        ──calls──▶ getMaintenanceBrief() for the panel
-//   atak.js        ──reads──▶ store.maintenance_tasks directly for synthesis
+//   atak.js        ──reads──▶ store.calendar for synthesis
 //
 // maintenance.js does not import from home.js, cascade.js, or atak.js.
 // The store is the only shared interface.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// QUICK-ADD TILES
+// Common recurring tasks with sensible default intervals.
+// Tiles whose label already exists in store.maintenance_tasks are filtered out
+// so the user never sees a duplicate prompt.
+// ---------------------------------------------------------------------------
+
+export const QUICK_ADD_TILES = [
+  { id: 'qa_furnace_filter',      label: 'Furnace / heat pump filter',       interval_days: 90,  interval_label: 'Every 3 months' },
+  { id: 'qa_range_hood',          label: 'Range hood filter',                interval_days: 90,  interval_label: 'Every 3 months' },
+  { id: 'qa_smoke_test',          label: 'Smoke detector test',              interval_days: 180, interval_label: 'Every 6 months' },
+  { id: 'qa_co_test',             label: 'CO detector test',                 interval_days: 180, interval_label: 'Every 6 months' },
+  { id: 'qa_dryer_vent',          label: 'Dryer vent cleaning',              interval_days: 180, interval_label: 'Every 6 months' },
+  { id: 'qa_water_filter',        label: 'Water filter',                     interval_days: 180, interval_label: 'Every 6 months' },
+  { id: 'qa_gutters',             label: 'Gutter cleaning',                  interval_days: 180, interval_label: 'Every 6 months' },
+  { id: 'qa_hvac_service',        label: 'HVAC service',                     interval_days: 365, interval_label: 'Annually'       },
+  { id: 'qa_fire_extinguisher',   label: 'Fire extinguisher inspection',     interval_days: 365, interval_label: 'Annually'       },
+  { id: 'qa_weatherstripping',    label: 'Weatherstripping check',           interval_days: 365, interval_label: 'Annually'       },
+  { id: 'qa_detector_batteries',  label: 'Smoke / CO battery replacement',   interval_days: 365, interval_label: 'Annually'       },
+  { id: 'qa_lawn_fertilizer',     label: 'Lawn fertilizer',                  interval_days: 90,  interval_label: 'Every 3 months' },
+  { id: 'qa_faucet_winterize',    label: 'Exterior faucet winterization',    interval_days: 365, interval_label: 'Annually'       },
+];
 
 
 // ---------------------------------------------------------------------------
@@ -61,6 +84,10 @@ export function getMaintenanceBrief() {
         }],
     cta:        'Add a task',
     cta_action: 'add_maintenance',
+    quick_add_tiles: (() => {
+      const existingLabels = new Set(tasks.map(t => t.label.toLowerCase()));
+      return QUICK_ADD_TILES.filter(tile => !existingLabels.has(tile.label.toLowerCase()));
+    })(),
   };
 }
 

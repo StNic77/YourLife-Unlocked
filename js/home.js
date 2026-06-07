@@ -25,6 +25,7 @@ import {
 import {
   getMaintenanceBrief,
   syncMaintenanceSignals,
+  QUICK_ADD_TILES,
 } from './maintenance.js';
 import {
   getHealthBrief,
@@ -780,6 +781,33 @@ export function createHome(world) {
         </div>
 
         ${inputHTML}
+        ${(content.quick_add_tiles && content.quick_add_tiles.length) ? `
+          <div style="margin-top:20px;">
+            <div style="
+              font-family:var(--font-sans);font-weight:200;
+              font-size:10px;letter-spacing:0.25em;text-transform:uppercase;
+              color:rgba(240,235,218,0.25);margin-bottom:12px;
+            ">Quick add</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;">
+              ${content.quick_add_tiles.map(tile => `
+                <button
+                  class="maintenance-quick-add"
+                  data-tile-id="${tile.id}"
+                  style="
+                    padding:8px 14px;
+                    border:0.5px solid rgba(240,235,218,0.15);border-radius:2px;
+                    font-family:var(--font-sans);font-weight:200;
+                    font-size:11px;letter-spacing:0.06em;
+                    color:rgba(240,235,218,0.5);
+                    transition:background 0.2s ease,border-color 0.2s ease,color 0.2s ease;
+                  "
+                  onmouseenter="this.style.background='rgba(240,235,218,0.06)';this.style.borderColor='rgba(240,235,218,0.3)';this.style.color='rgba(240,235,218,0.8)'"
+                  onmouseleave="this.style.background='transparent';this.style.borderColor='rgba(240,235,218,0.15)';this.style.color='rgba(240,235,218,0.5)'"
+                >${tile.label}</button>
+              `).join('')}
+            </div>
+          </div>
+        ` : ''}
         ${ctaHTML}
       </div>
     `;
@@ -1178,6 +1206,38 @@ export function createHome(world) {
       });
     });
 
+    // Edit buttons on appointment lines — opens lightweight reschedule cascade
+    panel.querySelectorAll('.health-edit-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const context = JSON.parse(btn.dataset.healthEdit || '{}');
+        const apptTypeLabels = {
+          annual_physical: 'Annual physical',
+          dentist:         'Dental appointment',
+          eye_care:        'Eye exam',
+          skin:            'Skin check',
+          specialist:      'Specialist',
+          screening:       context.screening_label || 'Screening',
+        };
+        const title = context.provider_name || apptTypeLabels[context.appointment_type] || 'Appointment';
+        const cascadeItem = {
+          id:    `reschedule_${context.signal_ref || context.appointment_type}`,
+          title: `Reschedule`,
+          body:  title,
+          cascade: {
+            type:    'reschedule_appointment',
+            context: { ...context },
+          },
+        };
+        const cascadePanel = createCascade({
+          item:       cascadeItem,
+          onBack:     () => {},
+          onComplete: () => { syncHealthSignals(); },
+        });
+        if (cascadePanel) cascadePanel.open(document.getElementById('app') || el);
+      });
+    });
+
     // Task detail — opens when user taps a maintenance task row
     const openTaskDetail = (taskId) => {
       const tasks = store.get('maintenance_tasks') || [];
@@ -1208,6 +1268,65 @@ export function createHome(world) {
       label.addEventListener('click',      () => openTaskDetail(label.dataset.taskId));
       label.addEventListener('mouseenter', () => label.style.color = 'rgba(210,160,60,0.9)');
       label.addEventListener('mouseleave', () => label.style.color = 'rgba(240,235,218,0.65)');
+    });
+
+    // Quick-add tile tap — adds task immediately with default interval, shows toast
+    panel.querySelectorAll('.maintenance-quick-add').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tileId = btn.dataset.tileId;
+        const tile   = QUICK_ADD_TILES.find(t => t.id === tileId);
+        if (!tile) return;
+
+        // Write task to store
+        const tasks = store.get('maintenance_tasks') || [];
+        const id    = `mt_${Date.now()}`;
+        const today = new Date();
+        const nextDue = new Date(today);
+        nextDue.setDate(today.getDate() + tile.interval_days);
+
+        tasks.push({
+          id,
+          label:          tile.label,
+          interval_days:  tile.interval_days,
+          interval_label: tile.interval_label,
+          last_done:      null,
+          next_due:       nextDue.toISOString().split('T')[0],
+          notes:          null,
+          tier:           'caution',
+        });
+        store.set('maintenance_tasks', tasks);
+        syncMaintenanceSignals();
+
+        // Toast confirmation
+        const toast = document.createElement('div');
+        toast.style.cssText = `
+          position:fixed;
+          bottom:max(32px, calc(var(--safe-bottom) + 24px));
+          left:50%;transform:translateX(-50%);
+          background:rgba(20,20,20,0.95);
+          border:0.5px solid rgba(240,235,218,0.15);border-radius:3px;
+          padding:12px 20px;
+          font-family:var(--font-sans);font-weight:200;
+          font-size:12px;letter-spacing:0.06em;
+          color:rgba(240,235,218,0.8);
+          white-space:nowrap;
+          z-index:9999;
+          opacity:0;transition:opacity 0.25s ease;
+          pointer-events:none;
+        `;
+        toast.textContent = `${tile.label} — ${tile.interval_label}`;
+        document.body.appendChild(toast);
+        requestAnimationFrame(() => {
+          toast.style.opacity = '1';
+          setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+          }, 2200);
+        });
+
+        // Remove tile button immediately so it doesn't show as available again
+        btn.remove();
+      });
     });
 
     // Calendar date — opens calendar to that specific day
