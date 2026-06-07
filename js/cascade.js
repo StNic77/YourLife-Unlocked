@@ -1317,12 +1317,38 @@ const vehicleServiceRenderer = {
 
   complete(context, route, update) {
     const vehicles = store.get('vehicles') || [];
-    const updated  = vehicles.map(v => {
-      if (v.id !== context.vehicle_id) return v;
-      return { ...v, service_due: update.new_service_due || null };
-    });
-    store.set('vehicles', updated);
-    syncVehicleSignals(); // retire overdue signal, write next service signal
+    const idx = vehicles.findIndex(v => v.id === context.vehicle_id);
+    if (idx < 0) { logCascadeComplete('vehicle_service', context.vehicle_id, route); return; }
+
+    const v       = vehicles[idx];
+    const today   = new Date().toISOString().split('T')[0];
+    const mileage = v.mileage_at_entry || null;
+    const intervalKm = v.preferred_interval_km || 8000;
+
+    // Log the service completion
+    v.service_history = v.service_history || [];
+    if (context.service_type === 'oil_change' || !context.service_type) {
+      v.service_history.push({
+        type:    'oil_change',
+        date:    today,
+        mileage: mileage,
+        shop:    v.preferred_shop || null,
+        notes:   'Marked done via service cascade',
+      });
+      // Update oil change tracking fields
+      v.last_oil_date    = today;
+      v.last_oil_mileage = mileage;
+      v.next_service_km  = mileage ? mileage + intervalKm : null;
+
+      // Recalculate service_due date — estimate based on interval and current mileage
+      const monthsOut = intervalKm / 1500;
+      const dueDate   = new Date();
+      dueDate.setDate(dueDate.getDate() + Math.round(monthsOut * 30.4));
+      v.service_due = dueDate.toISOString().split('T')[0];
+    }
+
+    store.set('vehicles', vehicles);
+    syncVehicleSignals();
     logCascadeComplete('vehicle_service', context.vehicle_id, route);
   },
 };
